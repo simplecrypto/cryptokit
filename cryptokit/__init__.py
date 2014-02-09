@@ -1,4 +1,56 @@
+from __future__ import unicode_literals
+from future.builtins import (bytes, range)
 from struct import pack, unpack
+from collections import namedtuple
+
+
+def difficulty_unpack(raw):
+    """ Unpacks target given as 0x0404cb (as it's stored in block headers) and
+    converts it to an integer. Expects a byte string. """
+    assert len(raw) is 4
+    mantissa = pack("<I", "\0\0" + raw[1:])
+    return mantissa * (2 ** (8 * pack("<H", "\0\0" + raw[0:1])))
+
+
+class Hash(namedtuple('Hash', ['hash'], verbose=False)):
+    """ Helper object for dealing with hash encoding. Most functions from
+    bitcoind deal with little-endian values while most consumer use
+    big-endian. """
+    @classmethod
+    def from_le_bytes(cls, by):
+        return cls(by)
+
+    @classmethod
+    def from_be_bytes(cls, by):
+        return cls(by[::-1])
+
+    @classmethod
+    def from_be_hex(cls, by):
+        return cls(unhexlify(by[::-1]))
+
+    @classmethod
+    def from_le_hex(cls, by):
+        return cls(unhexlify(by))
+
+    @property
+    def le_hex(self):
+        return hexlify(self[0]).decode('ascii')
+
+    @property
+    def be_hex(self):
+        return hexlify(self[0][::-1]).decode('ascii')
+
+    @property
+    def le_bytes(self):
+        return self[0]
+
+    @property
+    def be_bytes(self):
+        return self[0][::-1]
+
+    def sha(self, other):
+        return Hash.from_be_bytes(sha256(sha256(
+            self.be_bytes + other.be_bytes).digest()).digest())
 
 
 class BitcoinEncoding(object):
@@ -19,13 +71,13 @@ class BitcoinEncoding(object):
         """ This is the inverse of the above function, accepting a count and
         encoding that count """
         if number < 0xfd:
-            return pack('<B', number)
+            return pack(str('<B'), number)
         if number <= 0xffff:
-            return b'\xfd' + pack('<H', number)
+            return b'\xfd' + pack(str('<H'), number)
         if number <= 0xffffffff:
-            return b'\xfe' + pack('<L', number)
-        return b'\xff' + pack('<Q', number)
+            return b'\xfe' + pack(str('<L'), number)
+        return b'\xff' + pack(str('<Q'), number)
 
     def funpack(self, *args, **kwargs):
         """ Helper for the common act of unpacking a single item """
-        return unpack(*args, **kwargs)[0]
+        return unpack(str(args[0]), *args[1:], **kwargs)[0]

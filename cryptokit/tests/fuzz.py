@@ -1,12 +1,14 @@
 """ An assortment of fuzz tests that use real network data to test various
 structures in this package. They generally use bitcoind to collect data and
 confirm that different methods work properly. """
+from __future__ import unicode_literals
 from bitcoinrpc.proxy import AuthServiceProxy
 from cryptokit.transaction import Transaction
-from cryptokit.block_header import merkleroot, merklebranch
+from cryptokit.block import merkleroot, merklebranch
 from binascii import unhexlify, hexlify
 from hashlib import sha256
 from time import sleep
+from pprint import pprint
 
 import six
 import argparse
@@ -85,7 +87,7 @@ def merkleroot_fuzz(args):
     fail = []
     blocks = conn.getblockcount()
     try:
-        for i in range(3000, blocks):
+        for i in range(30000, blocks):
             block = conn.getblock(conn.getblockhash(i))
             deserial = [unhexlify(hsh)[::-1] for hsh in block['tx']]
             # compute the merkle root to confirm

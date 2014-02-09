@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+from future.builtins import (bytes, range)
 from hashlib import sha256
 from struct import pack
 from collections import namedtuple
@@ -5,12 +7,15 @@ from binascii import hexlify
 from . import BitcoinEncoding
 
 
-""" Previous hash needs to be given as a byte array in little endian.
-script_sig is a byte string. Others are simply integers. """
-Input = namedtuple('Input',
-                   ['prevout_hash', 'prevout_idx', 'script_sig', 'seqno'])
-""" script_pub_key is a byte string. Amount is an integer. """
-Output = namedtuple('Output', ['amount', 'script_pub_key'])
+class Input(namedtuple('Input',
+                       ['prevout_hash', 'prevout_idx', 'script_sig', 'seqno'])):
+    """ Previous hash needs to be given as a byte array in little endian.
+    script_sig is a byte string. Others are simply integers. """
+    pass
+
+class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
+    """ script_pub_key is a byte string. Amount is an integer. """
+    pass
 
 
 class Transaction(BitcoinEncoding):
@@ -18,13 +23,13 @@ class Transaction(BitcoinEncoding):
     raw format at https://en.bitcoin.it/wiki/Transactions """
     _nullprev = b'\0' * 32
 
-    def __init__(self, raw=None):
+    def __init__(self, raw=None, fees=None):
         # raw transaction data in byte format
-        self._raw = raw
+        self._raw = bytes(raw)
         self.inputs = []
         self.outputs = []
         self.locktime = 0
-        self.fees = None
+        self.fees = fees
         self.version = 1
         if raw:
             self.disassemble()
@@ -144,6 +149,9 @@ class Transaction(BitcoinEncoding):
     @property
     def behexhash(self):
         return hexlify(self.hash)
+
+    def __hash__(self):
+        return self.funpack('i', self.hash)
 
     def to_dict(self):
         return {'inputs': [{'prevout_hash': hexlify(inp[0]),

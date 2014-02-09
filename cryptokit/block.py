@@ -1,50 +1,13 @@
 from hashlib import sha256
-from itertools import zip_longest, tee, islice
+try:
+    from itertools import zip_longest
+except ImportError:
+    from itertools import izip_longest as zip_longest
+from itertools import tee, islice
 from binascii import unhexlify, hexlify
 from collections import namedtuple
 
 from . import BitcoinEncoding
-
-
-class Hash(namedtuple('Hash', ['hash'], verbose=False)):
-    """ Helper object for dealing with hash encoding. Most functions from
-    bitcoind deal with little-endian values while most consumer use
-    big-endian. """
-    @classmethod
-    def from_le_bytes(cls, by):
-        return cls(by)
-
-    @classmethod
-    def from_be_bytes(cls, by):
-        return cls(by[::-1])
-
-    @classmethod
-    def from_be_hex(cls, by):
-        return cls(unhexlify(by[::-1]))
-
-    @classmethod
-    def from_le_hex(cls, by):
-        return cls(unhexlify(by))
-
-    @property
-    def le_hex(self):
-        return hexlify(self[0]).decode('ascii')
-
-    @property
-    def be_hex(self):
-        return hexlify(self[0][::-1]).decode('ascii')
-
-    @property
-    def le_bytes(self):
-        return self[0]
-
-    @property
-    def be_bytes(self):
-        return self[0][::-1]
-
-    def sha(self, other):
-        return Hash.from_be_bytes(sha256(sha256(
-            self.be_bytes + other.be_bytes).digest()).digest())
 
 
 def pairwise(iterator):
