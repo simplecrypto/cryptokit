@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 from future.builtins import (bytes, range)
 from struct import pack, unpack
 from collections import namedtuple
+from binascii import unhexlify, hexlify
 
 
 def difficulty_unpack(raw):

@@ -1,21 +1,43 @@
 from __future__ import unicode_literals
-from future.builtins import (bytes, range)
+from future.builtins import bytes, range, chr
 from hashlib import sha256
 from struct import pack
 from collections import namedtuple
 from binascii import hexlify
 from . import BitcoinEncoding
+from .base58 import get_bcaddress
 
 
 class Input(namedtuple('Input',
                        ['prevout_hash', 'prevout_idx', 'script_sig', 'seqno'])):
     """ Previous hash needs to be given as a byte array in little endian.
     script_sig is a byte string. Others are simply integers. """
-    pass
+    @classmethod
+    def coinbase(cls, height, extra_script_sig=b''):
+        # Meet BIP 34 by adding the height of the block
+        # encode variable length integer
+        encoded_height = b''
+        length = 0
+        while height:
+            height, d = divmod(height, 256)
+            encoded_height += bytes(pack(str("B"), d))
+            length += 1
+        sigscript = bytes(pack(str("B"), length)) + encoded_height
+        return cls(Transaction._nullprev,
+                   pack(str('<L'), 4294967295),
+                   sigscript + extra_script_sig, pack(str('<L'), 0))
+
 
 class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
     """ script_pub_key is a byte string. Amount is an integer. """
-    pass
+    @classmethod
+    def to_address(cls, amount, address):
+        """ Creates an output with a script_pub_key that sends the funds to a
+        specific address """
+        addr = get_bcaddress(address)
+        if addr is None:
+            raise ValueError("Invalid address")
+        return cls(amount, b'\x76\xa9\x14' + addr + b'\x88\xac')
 
 
 class Transaction(BitcoinEncoding):
@@ -44,7 +66,7 @@ class Transaction(BitcoinEncoding):
         if fees:
             self.fees = fees
         if raw:
-            self._raw = raw
+            self._raw = bytes(raw)
         data = self._raw
 
         # first four bytes, little endian unpack
@@ -103,16 +125,20 @@ class Transaction(BitcoinEncoding):
         transaction. """
         return self.inputs[0].prevout_hash == self._nullprev
 
-    def assemble(self):
+    def assemble(self, split=False):
         """ Reverse of disassemble, pack up the object into a byte string raw
-        transaction. """
+        transaction. split=True will return two halves of the transaction ,
+        first chunck will be up until then end of the sigscript, second chunk
+        is the remainder. For changing extronance, split off the sigscript """
         data = pack('<L', self.version)
+        split_point = None
 
         data += self.varlen_encode(len(self.inputs))
         for prevout_hash, prevout_idx, script_sig, seqno in self.inputs:
             data += prevout_hash
             data += pack('<L', prevout_idx)
             data += self.varlen_encode(len(script_sig))
+            split_point = len(data)
             data += script_sig
             data += pack('<L', seqno)
 
@@ -127,6 +153,8 @@ class Transaction(BitcoinEncoding):
         self._raw = data
         # reset hash to be recacluated on next grab
         self._hash = None
+        if split:
+            return data[:split_point], data[split_point:]
         return data
 
     @property

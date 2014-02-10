@@ -67,10 +67,10 @@ def b58decode(v, length):
     return result
 
 
-def get_bcaddress_version(strAddress):
-    """ Returns None if strAddress is invalid. Otherwise returns integer
+def get_bcaddress_version(str_address):
+    """ Returns None if str_address is invalid. Otherwise returns integer
     version of address. """
-    addr = b58decode(strAddress, 25)
+    addr = b58decode(str_address, 25)
     if addr is None:
         return None
     version = addr[0]
@@ -79,4 +79,18 @@ def get_bcaddress_version(strAddress):
     h3 = sha256(sha256(vh160).digest()).digest()
     if h3[0:4] == checksum:
         return ord(version)
+    return None
+
+
+def get_bcaddress(str_address):
+    """ Returns None if str_address is invalid. Otherwise returns integer
+    version of address. """
+    addr = b58decode(str_address, 25)
+    if addr is None:
+        return None
+    checksum = addr[-4:]
+    vh160 = addr[:-4]  # Version plus hash160 is what is checksummed
+    h3 = sha256(sha256(vh160).digest()).digest()
+    if h3[0:4] == checksum:
+        return addr
     return None
