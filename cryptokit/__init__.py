@@ -5,12 +5,19 @@ from collections import namedtuple
 from binascii import unhexlify, hexlify
 
 
-def difficulty_unpack(raw):
+def target_unpack(raw):
     """ Unpacks target given as 0x0404cb (as it's stored in block headers) and
     converts it to an integer. Expects a byte string. """
     assert len(raw) is 4
-    mantissa = pack("<I", "\0\0" + raw[1:])
-    return mantissa * (2 ** (8 * pack("<H", "\0\0" + raw[0:1])))
+    mantissa = int(hexlify(raw[1:]), 16)
+    exp = unpack(str("B"), raw[0:1])[0]
+    return mantissa * (2 ** (8 * (exp - 3)))
+
+
+def target_from_diff(
+    difficulty,
+    diff=0x00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF):
+    return difficulty * diff
 
 
 class Hash(namedtuple('Hash', ['hash'], verbose=False)):

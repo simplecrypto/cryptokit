@@ -1,11 +1,13 @@
 from __future__ import unicode_literals
 from future.builtins import bytes, range, chr
+
 from hashlib import sha256
 from struct import pack
 from collections import namedtuple
 from binascii import hexlify
 from . import BitcoinEncoding
 from .base58 import get_bcaddress
+from sys import byteorder
 
 
 class Input(namedtuple('Input',
@@ -24,8 +26,8 @@ class Input(namedtuple('Input',
             length += 1
         sigscript = bytes(pack(str("B"), length)) + encoded_height
         return cls(Transaction._nullprev,
-                   pack(str('<L'), 4294967295),
-                   sigscript + extra_script_sig, pack(str('<L'), 0))
+                   4294967295,
+                   sigscript + extra_script_sig, 0)
 
 
 class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
@@ -42,7 +44,7 @@ class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
 
 class Transaction(BitcoinEncoding):
     """ An object wrapper for a bitcoin transaction. More information on the
-    raw format at https://en.bitcoin.it/wiki/Transactions """
+    raw format at https://en.bitcoin.it/wiki/Transactions. """
     _nullprev = b'\0' * 32
 
     def __init__(self, raw=None, fees=None):
@@ -51,12 +53,11 @@ class Transaction(BitcoinEncoding):
         self.inputs = []
         self.outputs = []
         self.locktime = 0
+        # integer value, not encoded in the pack but for utility
         self.fees = fees
         self.version = 1
-        if raw:
-            self.disassemble()
-        else:
-            self._hash = None
+        # stored as le bytes
+        self._hash = None
 
     def disassemble(self, raw=None, dump_raw=False, fees=None):
         """ Unpacks a raw transaction into its object components. If raw
@@ -130,25 +131,25 @@ class Transaction(BitcoinEncoding):
         transaction. split=True will return two halves of the transaction ,
         first chunck will be up until then end of the sigscript, second chunk
         is the remainder. For changing extronance, split off the sigscript """
-        data = pack('<L', self.version)
+        data = pack(str('<L'), self.version)
         split_point = None
 
         data += self.varlen_encode(len(self.inputs))
         for prevout_hash, prevout_idx, script_sig, seqno in self.inputs:
             data += prevout_hash
-            data += pack('<L', prevout_idx)
+            data += pack(str('<L'), prevout_idx)
             data += self.varlen_encode(len(script_sig))
             split_point = len(data)
             data += script_sig
-            data += pack('<L', seqno)
+            data += pack(str('<L'), seqno)
 
         data += self.varlen_encode(len(self.outputs))
         for amount, script_pub_key in self.outputs:
-            data += pack('<Q', amount)
+            data += pack(str('<Q'), amount)
             data += self.varlen_encode(len(script_pub_key))
             data += script_pub_key
 
-        data += pack('<L', self.locktime)
+        data += pack(str('<L'), self.locktime)
 
         self._raw = data
         # reset hash to be recacluated on next grab
@@ -168,15 +169,22 @@ class Transaction(BitcoinEncoding):
         """ Compute the hash of the transaction when needed """
         if self._hash is None:
             self._hash = sha256(sha256(self._raw).digest()).digest()
+            if byteorder is 'big':  # store in standard le for bitcion
+                self._hash = self._hash[::-1]
         return self._hash
+    lehash = hash
+
+    @property
+    def behash(self):
+        return self.hash[::-1]
 
     @property
     def lehexhash(self):
-        return hexlify(self.hash[::-1])
+        return hexlify(self.hash)
 
     @property
     def behexhash(self):
-        return hexlify(self.hash)
+        return hexlify(self.hash[::-1])
 
     def __hash__(self):
         return self.funpack('i', self.hash)

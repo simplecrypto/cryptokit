@@ -33,6 +33,7 @@ def transaction_fuzz(args):
         while True:
             # get new transactions from bitcoind
             trans = conn.getblocktemplate()
+            print(trans)
             unidentified.update(
                 {val['hash']: val['data'] for val in trans if val['hash'] not in proc})
             new = {}
