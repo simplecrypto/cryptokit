@@ -127,10 +127,12 @@ class BlockTemplate(BitcoinEncoding):
         inst = cls()
         inst.hash_prev = retval['previousblockhash']
         inst.ntime = hexlify(pack(str("<L"), retval['curtime']))
-        inst.target = int(retval['target'], 16)
+        inst.target = retval['target']
         inst.version = retval['version']
         inst.coinbase1 = coinbase1[:-1 * extra_length]
+        inst.coinbase2 = coinbase2
         inst.transactions = transactions
+        return inst
 
     @property
     def merklebranch(self):

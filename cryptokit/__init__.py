@@ -14,6 +14,10 @@ def target_unpack(raw):
     return mantissa * (2 ** (8 * (exp - 3)))
 
 
+def target_pack(hex_num):
+    pass
+
+
 def target_from_diff(
     difficulty,
     diff=0x00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF):
