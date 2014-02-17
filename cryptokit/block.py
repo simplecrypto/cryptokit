@@ -1,15 +1,14 @@
 from __future__ import unicode_literals
-from future.builtins import bytes, range, chr
+from future.builtins import bytes
 from future import standard_library
 standard_library.install_hooks()
 
 from hashlib import sha256
 from itertools import tee, islice, zip_longest
 from binascii import unhexlify, hexlify
-from sys import byteorder
-from struct import pack
+from struct import pack, unpack
 
-from . import BitcoinEncoding, target_unpack
+from . import BitcoinEncoding, target_unpack, uint256_from_str
 from .transaction import Transaction
 
 
@@ -29,7 +28,7 @@ def merkleroot(iterator, be=False, hashes=False):
     use the list in place, but thats a future job... """
     # get the hashes of all the transactions
     if not hashes:
-        h_list = [t.hash for t in iterator]
+        h_list = [t.behash for t in iterator]
     else:
         h_list = iterator
 
@@ -40,11 +39,11 @@ def merkleroot(iterator, be=False, hashes=False):
                   for h1, h2 in pairwise(h_list)]
     # return little endian
     if be:
-        return h_list[0], size
-    return h_list[0][::-1], size
+        return h_list[0][::-1], size
+    return h_list[0], size
 
 
-def merklebranch(iterator, be=False, hashes=False):
+def merklebranch(iterator, be=True, hashes=False):
     """ Similar to the above method, this instead generates a merkle branch
     for mining clients to quickly re-calculate the merkle root with minimum
     of re-hashes while chaning the coinbase extranonce. Big endian by default,
@@ -52,15 +51,11 @@ def merklebranch(iterator, be=False, hashes=False):
     def shamaster(h1, h2):
         if h1 is None:
             return None
-        hsh = sha256(sha256(h1 + (h2 or h1)).digest()).digest()
-        # encode little endian
-        if byteorder == 'big':
-            return hsh[::-1]
-        return hsh
+        return sha256(sha256(h1 + (h2 or h1)).digest()).digest()
 
     # put a placeholder in our level zero that pretends to be the coinbase
     if not hashes:
-        h_list = [None] + [t.hash for t in iterator]
+        h_list = [None] + [t.behash for t in iterator]
     else:
         h_list = [None] + list(iterator)
     branch = []
@@ -69,9 +64,9 @@ def merklebranch(iterator, be=False, hashes=False):
         # left most is what will be recomputed, we want the one right of the
         # leftmost
         if be:
-            branch.append(h_list[1][::-1])
-        else:
             branch.append(h_list[1])
+        else:
+            branch.append(h_list[1][::-1])
         h_list = [shamaster(h1, h2) for h1, h2 in pairwise(h_list)]
     return branch
 
@@ -81,13 +76,9 @@ def from_merklebranch(branch_list, coinbase, be=False):
     branch_list is a list of little endian byte arrays of hash values, as is
     returned by merklebranch by default. Coinbase is expected to be a
     Transaction object. """
-    root = coinbase.lehash
+    root = coinbase.behash
     for node in branch_list:
         root = sha256(sha256(root + node).digest()).digest()
-
-    # reverse order to le if sys is be
-    if byteorder == 'big' and len(branch_list) > 0:
-        root = root[::-1]
 
     # return be if requested
     if be:
@@ -96,22 +87,23 @@ def from_merklebranch(branch_list, coinbase, be=False):
 
 
 class BlockTemplate(BitcoinEncoding):
-    """ An object for encapsulating common block header/template type actions. """
+    """ An object for encapsulating common block header/template type actions.
+    """
     def __init__(self, raw=None):
-        # little endian hex format, as given by most rpc calls
-        self.hash_prev = None  # bytes
-        # hex string
+        # little endian bytes
+        self.hashprev = None
+        # ints
         self.ntime = None
-        # target as compressed hex
-        self.target = None
-        # integer version
+        self.bits = None
         self.version = 2
-        # assumes that the extranonces are missing and will be passed for
-        # validation
+        # assumes that the extranonce padding is missing
         self.coinbase1 = None
         self.coinbase2 = None
         # expects a list of Transaction objects...
         self.transactions = None
+        self.job_id = None
+
+        # lazy loaded...
         self._merklebranch = None
 
     @classmethod
@@ -125,69 +117,167 @@ class BlockTemplate(BitcoinEncoding):
             transactions = []
         coinbase1, coinbase2 = coinbase.assemble(split=True)
         inst = cls()
-        inst.hash_prev = retval['previousblockhash']
-        inst.ntime = hexlify(pack(str("<L"), retval['curtime']))
-        inst.target = retval['target']
+        inst.hashprev = unhexlify(retval['previousblockhash'])[::-1]
+        inst.ntime = retval['curtime']
+        inst.bits = unhexlify(retval['bits'])
         inst.version = retval['version']
-        inst.coinbase1 = coinbase1[:-1 * extra_length]
+        # chop the padding off the coinbase1 for extranonces to be put
+        if extra_length > 0:
+            inst.coinbase1 = coinbase1[:-1 * extra_length]
+        else:
+            inst.coinbase1 = coinbase1
         inst.coinbase2 = coinbase2
         inst.transactions = transactions
         return inst
 
+    # MERKLE_BRANCH
+    # =================================================
     @property
-    def merklebranch(self):
+    def merklebranch_be(self):
+        """ Generate (or cache) merkle branch in be bytes """
         if self._merklebranch is None:
             self._merklebranch = merklebranch(self.transactions)
         return self._merklebranch
 
     @property
-    def merklebranch_hex(self):
-        return [hexlify(hsh) for hsh in self.merklebranch]
+    def merklebranch_le(self):
+        return [leaf[::-1] for leaf in self.merklebranch_be]
 
     @property
-    def target_int(self):
-        return target_unpack(self.target)
+    def merklebranch_be_hex(self):
+        return [hexlify(leaf) for leaf in self.merklebranch_be]
 
     @property
-    def version_packed(self):
-        return pack(str("<L"), self.version)
+    def merklebranch_le_hex(self):
+        return [hexlify(leaf[::-1]) for leaf in self.merklebranch_be]
+
+    # HASH_PREV
+    # =================================================
+    @property
+    def hashprev_le(self):
+        return self.hashprev
 
     @property
-    def nbits_packed(self):
-        return pack(str("<L"), self.nbits)
+    def hashprev_be(self):
+        return self.hashprev[::-1]
 
     @property
-    def ntime_packed(self):
-        return pack(str("<L"), self.ntime)
+    def hashprev_le_hex(self):
+        return hexlify(self.hashprev)
 
-    def merkleroot(self, coinbase):
+    # BITS
+    # =================================================
+    @property
+    def bits_be_hex(self):
+        return hexlify(self.bits)
+
+    @property
+    def bits_be(self):
+        return self.bits
+
+    @property
+    def bits_target(self):
+        return target_unpack(self.bits)
+
+    # NTIME
+    # =================================================
+    @property
+    def ntime_be_hex(self):
+        return hexlify(pack(str(">I"), self.ntime))
+
+    @property
+    def ntime_be(self):
+        return pack(str(">I"), self.ntime)
+
+    @property
+    def ntime_le(self):
+        return pack(str("<I"), self.ntime)
+
+    # VERSION
+    # =================================================
+    @property
+    def version_be(self):
+        return pack(str(">i"), self.version)
+
+    @property
+    def version_be_hex(self):
+        return hexlify(pack(str(">i"), self.version))
+
+    # MERKLEROOT
+    # =================================================
+    def merkleroot_be(self, coinbase):
         """ Accepts coinbase transaction object and returns what the merkleroot
         would be for this template """
-        return from_merklebranch(self.merklebranch, coinbase)
+        return from_merklebranch(self.merklebranch_be, coinbase, be=True)
 
-    def block_header(self, nonce, extra1, extra2):
+    def merkleroot_le(self, coinbase):
+        return self.merkleroot_be(coinbase)[::-1]
+
+    def merkleroot_flipped(self, coinbase):
+        """ Returns a byte string ready to be embedded in a block header """
+        r = uint256_from_str(self.merkleroot_be(coinbase))
+        rs = b""
+        for i in xrange(8):
+            rs += pack(str(">I"), r & 0xFFFFFFFFL)
+            r >>= 32
+        return rs[::-1]
+
+    def block_header(self, nonce, extra1, extra2, ntime=None):
         """ Builds a block header given nonces and extranonces. Assumes extra1
         and extra2 are bytes of the proper length from when the coinbase
-        fragments were originally generated. Assumes nonce is just an integer
-        since it's always 4 bytes wide. """
+        fragments were originally generated (either manually, or using
+        from_gbt)
+
+        nonce: 4 bytes big endian hex
+        extra1: direct from stratum, big endian
+        extra2: direct from stratum, big endian
+        ntime: 4 byte big endian hex
+        """
         # calculate the merkle root by assembling the coinbase transaction
-        coinbase = unhexlify(self.coinbase1) + extra1 + extra2
-        coinbase += unhexlify(self.coinbase2)
-        coinbase = Transaction(coinbase)
-        header = bytes(pack(str("<L"), self.version))
-        header += unhexlify(self.hash_prev)
-        header += self.merkleroot(self.merklebranch, coinbase)
-        header += bytes(pack(str("<L"), self.ntime))
-        header += bytes(pack(str("<L"), self.target))
-        header += bytes(pack(str("<L"), nonce))
-        return header
+
+        coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
+        coinbase_raw += self.coinbase2
+        coinbase = Transaction(coinbase_raw)
+        coinbase.disassemble()
+
+        header = self.version_be
+        header += self.hashprev_le
+        header += self.merkleroot_flipped(coinbase)
+        if ntime is None:
+            header += self.ntime_be
+        else:
+            if isinstance(ntime, basestring):
+                header += unhexlify(ntime)
+            else:
+                raise AttributeError("ntime must be hex string")
+        header += self.bits_be
+        header += unhexlify(nonce)
+        return b''.join([header[i*4:i*4+4][::-1] for i in range(0, 20)])
 
     @classmethod
-    def validate_scrypt(cls, block_header, target=None):
+    def validate_scrypt(cls, block_header, target):
         """ Hashes a block header with scrypt to confirm if it meets a target
         requirement or not """
-        from ltc_scrypt import getPoWHash
+        assert len(block_header) == 80
         # builds a block header from the template and confirms a difficulty
-        hsh = getPoWHash(block_header)
-        print(hexlify(hsh[::-1]))
-        return int(hexlify(hsh[::-1]), 16) < target
+        hsh = scrypt(block_header)
+        hash_int = uint256_from_str(hsh)
+        return hash_int < target
+
+    def stratum_params(self):
+        """ Generates a list of values to be passed to a work command for
+        stratum minus the flush value """
+        return [self.job_id,
+                self.hashprev_le_hex,
+                hexlify(self.coinbase1),
+                hexlify(self.coinbase2),
+                self.merklebranch_be_hex,
+                self.version_be_hex,
+                self.bits_be_hex,
+                self.ntime_be_hex]
+
+
+def scrypt(data):
+    from ltc_scrypt import getPoWHash
+    hsh = getPoWHash(data)
+    return hsh

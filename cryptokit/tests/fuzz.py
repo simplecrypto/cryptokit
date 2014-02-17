@@ -32,14 +32,14 @@ def transaction_fuzz(args):
     try:
         while True:
             # get new transactions from bitcoind
-            trans = conn.getblocktemplate()
-            print(trans)
+            trans = conn.getblocktemplate()['transactions']
             unidentified.update(
                 {val['hash']: val['data'] for val in trans if val['hash'] not in proc})
             new = {}
             for hash, data in six.iteritems(unidentified):
                 print("Testing transaction " + hash)
                 t_obj = Transaction(unhexlify(data))
+                t_obj.disassemble()
                 for inp in t_obj.inputs:
                     new_hash = hexlify(inp.prevout_hash[::-1]).decode('ascii')
                     if new_hash not in proc:
@@ -90,6 +90,7 @@ def merkleroot_fuzz(args):
     try:
         for i in range(30000, blocks):
             block = conn.getblock(conn.getblockhash(i))
+            print [hsh for hsh in block['tx']]
             deserial = [unhexlify(hsh)[::-1] for hsh in block['tx']]
             # compute the merkle root to confirm
             root = hexlify(merkleroot(deserial, hashes=True, be=False)[0]).decode('ascii')
@@ -97,7 +98,7 @@ def merkleroot_fuzz(args):
             # transaction was a coinbase
             if len(block['tx']) > 1:
                 merkle = deserial[0]
-                for hsh in merklebranch(deserial[1:], hashes=True):
+                for hsh in merklebranch(deserial[1:], hashes=True, be=True):
                     merkle = sha256(sha256(merkle + hsh).digest()).digest()
                 merkle = hexlify(merkle[::-1]).decode('ascii')
 
@@ -114,6 +115,7 @@ def merkleroot_fuzz(args):
 
             iters += 1
             sleep(args.sleep)
+            exit(0)
     finally:
         for f in fail:
             print(f)
@@ -139,5 +141,19 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sleep', default=1, type=float,
                         help='time to wait between pings to client')
     args = parser.parse_args()
+
+    conn = AuthServiceProxy("http://{0}:{1}@{2}:{3}/".format(args.username,
+                                                             args.password,
+                                                             args.address,
+                                                             args.port))
+    block = conn.getblock(conn.getblockhash(29255))
+    transactions = []
+    it = 0
+    for hsh in block['tx']:
+        transactions.append((hsh, conn.getrawtransaction(hsh)))
+        it += 1
+    block['tx'] = transactions
+    pprint(block)
+    exit(0)
 
     methods[args.method](args)

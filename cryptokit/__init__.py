@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from future.builtins import (bytes, range)
+from hashlib import sha256
 from struct import pack, unpack
 from collections import namedtuple
 from binascii import unhexlify, hexlify
@@ -14,14 +14,10 @@ def target_unpack(raw):
     return mantissa * (2 ** (8 * (exp - 3)))
 
 
-def target_pack(hex_num):
-    pass
-
-
 def target_from_diff(
-    difficulty,
-    diff=0x00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF):
-    return difficulty * diff
+        difficulty,
+        diff=0x00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF):
+    return diff / difficulty
 
 
 class Hash(namedtuple('Hash', ['hash'], verbose=False)):
@@ -93,3 +89,19 @@ class BitcoinEncoding(object):
     def funpack(self, *args, **kwargs):
         """ Helper for the common act of unpacking a single item """
         return unpack(str(args[0]), *args[1:], **kwargs)[0]
+
+
+def uint256_from_str(s):
+    r = 0L
+    t = unpack(str("<IIIIIIII"), s[:32])
+    for i in xrange(8):
+        r += t[i] << (i * 32)
+    return r
+
+
+def uint256_from_str_be(s):
+    r = 0L
+    t = unpack(str(">IIIIIIII"), s[:32])
+    for i in xrange(8):
+        r += t[i] << (i * 32)
+    return r
