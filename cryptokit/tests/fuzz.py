@@ -82,6 +82,15 @@ def merkleroot_fuzz(args):
                                                              args.password,
                                                              args.address,
                                                              args.port))
+    block = conn.getblock("7e22ccbce8b28364f80c305f63b1307f0f7f90364bf983b04bc3a3fe73916f1a")
+    for hsh in block['tx']:
+        print hsh
+        try:
+            pprint(conn.gettransaction(hsh))
+        except Exception as e:
+            print e.error
+    pprint(block)
+    exit(0)
     branch_failure = 0
     root_failure = 0
     iters = 0
@@ -90,7 +99,6 @@ def merkleroot_fuzz(args):
     try:
         for i in range(30000, blocks):
             block = conn.getblock(conn.getblockhash(i))
-            print [hsh for hsh in block['tx']]
             deserial = [unhexlify(hsh)[::-1] for hsh in block['tx']]
             # compute the merkle root to confirm
             root = hexlify(merkleroot(deserial, hashes=True, be=False)[0]).decode('ascii')
@@ -146,14 +154,5 @@ if __name__ == "__main__":
                                                              args.password,
                                                              args.address,
                                                              args.port))
-    block = conn.getblock(conn.getblockhash(29255))
-    transactions = []
-    it = 0
-    for hsh in block['tx']:
-        transactions.append((hsh, conn.getrawtransaction(hsh)))
-        it += 1
-    block['tx'] = transactions
-    pprint(block)
-    exit(0)
 
     methods[args.method](args)

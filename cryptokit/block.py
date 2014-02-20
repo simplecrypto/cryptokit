@@ -8,7 +8,7 @@ from itertools import tee, islice, zip_longest
 from binascii import unhexlify, hexlify
 from struct import pack, unpack
 
-from . import BitcoinEncoding, target_unpack, uint256_from_str
+from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
 from .transaction import Transaction
 
 
@@ -102,9 +102,11 @@ class BlockTemplate(BitcoinEncoding):
         # expects a list of Transaction objects...
         self.transactions = None
         self.job_id = None
+        self.total_value = None
 
         # lazy loaded...
         self._merklebranch = None
+        self.coinbase = None
 
     @classmethod
     def from_gbt(cls, retval, coinbase, extra_length=0, transactions=None):
@@ -117,10 +119,11 @@ class BlockTemplate(BitcoinEncoding):
             transactions = []
         coinbase1, coinbase2 = coinbase.assemble(split=True)
         inst = cls()
-        inst.hashprev = unhexlify(retval['previousblockhash'])[::-1]
+        inst.hashprev = unhexlify(reverse_hash(retval['previousblockhash']))
         inst.ntime = retval['curtime']
         inst.bits = unhexlify(retval['bits'])
         inst.version = retval['version']
+        inst.total_value = retval['coinbasevalue']
         # chop the padding off the coinbase1 for extranonces to be put
         if extra_length > 0:
             inst.coinbase1 = coinbase1[:-1 * extra_length]
@@ -156,10 +159,6 @@ class BlockTemplate(BitcoinEncoding):
     @property
     def hashprev_le(self):
         return self.hashprev
-
-    @property
-    def hashprev_be(self):
-        return self.hashprev[::-1]
 
     @property
     def hashprev_le_hex(self):
@@ -222,6 +221,10 @@ class BlockTemplate(BitcoinEncoding):
             r >>= 32
         return rs[::-1]
 
+    @property
+    def fee_total(self):
+        return sum([t.fees or 0 for t in self.transactions])
+
     def block_header(self, nonce, extra1, extra2, ntime=None):
         """ Builds a block header given nonces and extranonces. Assumes extra1
         and extra2 are bytes of the proper length from when the coinbase
@@ -237,12 +240,12 @@ class BlockTemplate(BitcoinEncoding):
 
         coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
         coinbase_raw += self.coinbase2
-        coinbase = Transaction(coinbase_raw)
-        coinbase.disassemble()
+        self.coinbase = Transaction(coinbase_raw)
+        #coinbase.disassemble()
 
         header = self.version_be
         header += self.hashprev_le
-        header += self.merkleroot_flipped(coinbase)
+        header += self.merkleroot_flipped(self.coinbase)
         if ntime is None:
             header += self.ntime_be
         else:
@@ -275,6 +278,16 @@ class BlockTemplate(BitcoinEncoding):
                 self.version_be_hex,
                 self.bits_be_hex,
                 self.ntime_be_hex]
+
+    def submit_serial(self, header):
+        block = header
+        block += self.varlen_encode(len(self.transactions) + 1)
+        if self.coinbase is None:
+            raise AttributeError("Coinbase hasn't been calculated")
+        block += self.coinbase.raw
+        for trans in self.transactions:
+            block += trans.raw
+        return block
 
 
 def scrypt(data):

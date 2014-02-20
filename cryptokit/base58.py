@@ -92,5 +92,5 @@ def get_bcaddress(str_address):
     vh160 = addr[:-4]  # Version plus hash160 is what is checksummed
     h3 = sha256(sha256(vh160).digest()).digest()
     if h3[0:4] == checksum:
-        return addr
+        return addr[1:-4]
     return None

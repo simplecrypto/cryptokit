@@ -14,6 +14,18 @@ def target_unpack(raw):
     return mantissa * (2 ** (8 * (exp - 3)))
 
 
+def bits_to_difficulty(bits):
+    """ Takes bits as a hex string and returns the difficulty as a floating
+    point number. """
+    return 0xFFFF * (2 ** 208) / float(target_unpack(unhexlify(bits)))
+
+
+def bits_to_shares(bits):
+    """ Returns the estimated shares of difficulty 1 to calculate a block at
+    a given difficulty. """
+    return int((2 ** 208) / target_unpack(unhexlify(bits)))
+
+
 def target_from_diff(
         difficulty,
         diff=0x00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF):
@@ -99,9 +111,10 @@ def uint256_from_str(s):
     return r
 
 
-def uint256_from_str_be(s):
-    r = 0L
-    t = unpack(str(">IIIIIIII"), s[:32])
-    for i in xrange(8):
-        r += t[i] << (i * 32)
-    return r
+def reverse_hash(h):
+    # This only revert byte order, nothing more
+    if len(h) != 64:
+        raise Exception('hash must have 64 hexa chars')
+
+    return ''.join([ h[56-i:64-i] for i in range(0, 64, 8) ])
+
