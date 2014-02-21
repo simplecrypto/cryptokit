@@ -53,8 +53,11 @@ HTTP_TIMEOUT = 30
 
 class JSONRPCException(Exception):
     def __init__(self, rpc_error):
-        Exception.__init__(self)
-        self.error = rpc_error
+        if isinstance(rpc_error, dict):
+            self.code = rpc_error.get('code')
+            rpc_error = rpc_error.get('message')
+
+        super(JSONRPCException, self).__init__(str(rpc_error))
 
 
 class AuthServiceProxy(object):
@@ -78,9 +81,9 @@ class AuthServiceProxy(object):
             pass
         authpair = user + b':' + passwd
         self.__auth_header = b'Basic ' + base64.b64encode(authpair)
-        
-        if connection: 
-            # Callables re-use the connection of the original proxy 
+
+        if connection:
+            # Callables re-use the connection of the original proxy
             self.__conn = connection
         elif self.__url.scheme == 'https':
             self.__conn = httplib.HTTPSConnection(self.__url.hostname, port,
