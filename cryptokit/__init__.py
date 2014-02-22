@@ -23,7 +23,7 @@ def bits_to_difficulty(bits):
 def bits_to_shares(bits):
     """ Returns the estimated shares of difficulty 1 to calculate a block at
     a given difficulty. """
-    return int((2 ** 208) / target_unpack(unhexlify(bits)))
+    return int(round(bits_to_difficulty(bits) * (0xFFFF + 1)))
 
 
 def target_from_diff(

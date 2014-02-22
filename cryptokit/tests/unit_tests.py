@@ -6,7 +6,7 @@ import unittest
 from cryptokit.base58 import get_bcaddress_version, b58encode, b58decode
 from cryptokit.transaction import Input, Transaction, Output
 from cryptokit.block import BlockTemplate, from_merklebranch, merklebranch, merkleroot, scrypt
-from cryptokit import target_unpack, target_from_diff, Hash, uint256_from_str, bits_to_difficulty
+from cryptokit import target_unpack, target_from_diff, Hash, uint256_from_str, bits_to_difficulty, bits_to_shares
 
 from hashlib import sha256
 from binascii import unhexlify, hexlify
@@ -363,6 +363,10 @@ class TestUtil(unittest.TestCase):
         # assert a difficulty of zero returns the correct integer
         self.assertEquals(bits_to_difficulty("1d00ffff"), 1)
         self.assertEquals(int(bits_to_difficulty("1b3be743")), 1094)
+
+    def test_bits_to_shares(self):
+        # assert a difficulty of zero returns the correct integer
+        self.assertEquals(bits_to_shares("1b368901"), 1)
 
     def test_target_from_diff(self):
         # assert a difficulty of zero returns the correct integer
