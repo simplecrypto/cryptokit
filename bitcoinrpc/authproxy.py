@@ -34,10 +34,7 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 """
 
-try:
-    import http.client as httplib
-except ImportError:
-    import httplib
+import urllib3
 import base64
 import json
 import decimal
@@ -46,27 +43,33 @@ try:
 except ImportError:
     import urlparse
 
-USER_AGENT = "AuthServiceProxy/0.1"
+USER_AGENT = "AuthServiceProxy/0.2"
 
 HTTP_TIMEOUT = 30
 
 
-class JSONRPCException(Exception):
+class CoinRPCException(Exception):
     def __init__(self, rpc_error):
+        self.error = rpc_error
         if isinstance(rpc_error, dict):
             self.code = rpc_error.get('code')
             rpc_error = rpc_error.get('message')
 
-        super(JSONRPCException, self).__init__(str(rpc_error))
+        super(CoinRPCException, self).__init__(str(rpc_error))
+JSONRPCException = CoinRPCException
 
 
 class AuthServiceProxy(object):
-    def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT, connection=None):
+    def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT,
+                 connection=None, pool_kwargs=None):
         self.__service_url = service_url
         self.__service_name = service_name
         self.__url = urlparse.urlparse(service_url)
         if self.__url.port is None:
-            port = 80
+            if self.__url.scheme == 'https':
+                port = 443
+            else:
+                port = 80
         else:
             port = self.__url.port
         self.__id_count = 0
@@ -82,16 +85,20 @@ class AuthServiceProxy(object):
         authpair = user + b':' + passwd
         self.__auth_header = b'Basic ' + base64.b64encode(authpair)
 
+        pool_kwargs = pool_kwargs or {}
         if connection:
             # Callables re-use the connection of the original proxy
             self.__conn = connection
         elif self.__url.scheme == 'https':
-            self.__conn = httplib.HTTPSConnection(self.__url.hostname, port,
-                                                  None, None, False,
-                                                  timeout)
+            self.__conn = urllib3.HTTPSConnectionPool(self.__url.hostname,
+                                                      port,
+                                                      timeout=timeout,
+                                                      **pool_kwargs)
         else:
-            self.__conn = httplib.HTTPConnection(self.__url.hostname, port,
-                                                 False, timeout)
+            self.__conn = urllib3.HTTPConnectionPool(self.__url.hostname,
+                                                     port,
+                                                     timeout=timeout,
+                                                     **pool_kwargs)
 
     def __getattr__(self, name):
         if name.startswith('__') and name.endswith('__'):
@@ -99,7 +106,8 @@ class AuthServiceProxy(object):
             raise AttributeError
         if self.__service_name is not None:
             name = "%s.%s" % (self.__service_name, name)
-        return AuthServiceProxy(self.__service_url, name, connection=self.__conn)
+        return AuthServiceProxy(self.__service_url, name,
+                                connection=self.__conn)
 
     def __call__(self, *args):
         self.__id_count += 1
@@ -108,13 +116,13 @@ class AuthServiceProxy(object):
                                'method': self.__service_name,
                                'params': args,
                                'id': self.__id_count})
-        self.__conn.request('POST', self.__url.path, postdata,
-                            {'Host': self.__url.hostname,
-                             'User-Agent': USER_AGENT,
-                             'Authorization': self.__auth_header,
-                             'Content-type': 'application/json'})
+        response = self.__conn.urlopen('POST', self.__url.path, postdata,
+                                        {'Host': self.__url.hostname,
+                                         'User-Agent': USER_AGENT,
+                                         'Authorization': self.__auth_header,
+                                         'Content-type': 'application/json'})
 
-        response = self._get_response()
+        response = self._get_response(response)
         if response['error'] is not None:
             raise JSONRPCException(response['error'])
         elif 'result' not in response:
@@ -125,19 +133,18 @@ class AuthServiceProxy(object):
 
     def _batch(self, rpc_call_list):
         postdata = json.dumps(list(rpc_call_list))
-        self.__conn.request('POST', self.__url.path, postdata,
-                            {'Host': self.__url.hostname,
-                             'User-Agent': USER_AGENT,
-                             'Authorization': self.__auth_header,
-                             'Content-type': 'application/json'})
+        response = self.__conn.urlopen('POST', self.__url.path, postdata,
+                                       {'Host': self.__url.hostname,
+                                        'User-Agent': USER_AGENT,
+                                        'Authorization': self.__auth_header,
+                                        'Content-type': 'application/json'})
 
-        return self._get_response()
+        return self._get_response(response)
 
-    def _get_response(self):
-        http_response = self.__conn.getresponse()
+    def _get_response(self, http_response):
         if http_response is None:
             raise JSONRPCException({
                 'code': -342, 'message': 'missing HTTP response from server'})
 
-        return json.loads(http_response.read().decode('utf8'),
+        return json.loads(http_response.data.decode('utf8'),
                           parse_float=decimal.Decimal)
