@@ -258,14 +258,17 @@ class BlockTemplate(BitcoinEncoding):
         return b''.join([header[i*4:i*4+4][::-1] for i in range(0, 20)])
 
     @classmethod
-    def validate_scrypt(cls, block_header, target):
+    def validate_scrypt(cls, block_header, target, ret_hash=False):
         """ Hashes a block header with scrypt to confirm if it meets a target
         requirement or not """
         assert len(block_header) == 80
         # builds a block header from the template and confirms a difficulty
         hsh = scrypt(block_header)
         hash_int = uint256_from_str(hsh)
-        return hash_int < target
+        if ret_hash:
+            return (hash_int < target), ("%064x" % hash_int)
+        else:
+            return hash_int < target
 
     def stratum_params(self):
         """ Generates a list of values to be passed to a work command for
