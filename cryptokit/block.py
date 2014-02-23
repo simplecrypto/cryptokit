@@ -293,6 +293,11 @@ class BlockTemplate(BitcoinEncoding):
         return block
 
 
+def scrypt_int(data):
+    hsh = scrypt(data)
+    return uint256_from_str(hsh)
+
+
 def scrypt(data):
     from ltc_scrypt import getPoWHash
     hsh = getPoWHash(data)
