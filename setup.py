@@ -16,5 +16,6 @@ setup(name='cryptokit',
       author='Isaac Cook',
       author_email='isaac@simpload.com',
       url='http://www.python.org/sigs/distutils-sig/',
+      install_requires=['future==0.11.2'],
       packages=find_packages(),
       ext_modules=[ltc_scrypt_module])
