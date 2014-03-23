@@ -298,7 +298,18 @@ def scrypt_int(data):
     return uint256_from_str(hsh)
 
 
+def vert_scrypt_int(data):
+    hsh = vert_scrypt(data)
+    return uint256_from_str(hsh)
+
+
 def scrypt(data):
     from ltc_scrypt import getPoWHash
+    hsh = getPoWHash(data)
+    return hsh
+
+
+def vert_scrypt(data):
+    from vert_scrypt import getPoWHash
     hsh = getPoWHash(data)
     return hsh
