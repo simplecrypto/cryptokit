@@ -310,6 +310,6 @@ def scrypt(data):
 
 
 def vert_scrypt(data):
-    from vert_scrypt import getPoWHash
+    from vtc_scrypt import getPoWHash
     hsh = getPoWHash(data)
     return hsh
