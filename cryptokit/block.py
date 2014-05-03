@@ -10,6 +10,7 @@ from struct import pack, unpack
 
 from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
 from .transaction import Transaction
+from .bitcoin import data as bitcoin_data
 
 
 def pairwise(iterator):
@@ -164,6 +165,10 @@ class BlockTemplate(BitcoinEncoding):
     def hashprev_le_hex(self):
         return hexlify(self.hashprev)
 
+    @property
+    def hashprev_be_hex(self):
+        return reverse_hash(hexlify(self.hashprev))
+
     # BITS
     # =================================================
     @property
@@ -283,11 +288,15 @@ class BlockTemplate(BitcoinEncoding):
                 self.ntime_be_hex]
 
     def submit_serial(self, header):
+        """ assembles a block bytestring for submission. """
         block = header
+        # encode number of transactions
         block += self.varlen_encode(len(self.transactions) + 1)
+        # add the coinbase first
         if self.coinbase is None:
             raise AttributeError("Coinbase hasn't been calculated")
         block += self.coinbase.raw
+        # and all the transaction raw values
         for trans in self.transactions:
             block += trans.raw
         return block
@@ -303,6 +312,11 @@ def vert_scrypt_int(data):
     return uint256_from_str(hsh)
 
 
+def sha256_int(data):
+    hsh = sha256d(data)
+    return uint256_from_str(hsh)
+
+
 def scrypt(data):
     from ltc_scrypt import getPoWHash
     hsh = getPoWHash(data)
@@ -312,4 +326,10 @@ def scrypt(data):
 def vert_scrypt(data):
     from vtc_scrypt import getPoWHash
     hsh = getPoWHash(data)
+    return hsh
+
+
+def sha256d(data):
+    hsh = sha256(sha256(data).digest()).digest()
+    return hsh
     return hsh

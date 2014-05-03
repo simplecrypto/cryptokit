@@ -9,6 +9,7 @@ from binascii import hexlify
 
 from . import BitcoinEncoding
 from .base58 import get_bcaddress
+from .bitcoin.script import create_push_script
 
 
 class Input(namedtuple('Input',
@@ -16,19 +17,15 @@ class Input(namedtuple('Input',
     """ Previous hash needs to be given as a byte array in little endian.
     script_sig is a byte string. Others are simply integers. """
     @classmethod
-    def coinbase(cls, height, extra_script_sig=b''):
+    def coinbase(cls, height, addtl_push=None, extra_script_sig=b''):
+        if not addtl_push:
+            addtl_push = []
         # Meet BIP 34 by adding the height of the block
         # encode variable length integer
-        encoded_height = b''
-        length = 0
-        while height:
-            height, d = divmod(height, 256)
-            encoded_height += bytes(pack(str("B"), d))
-            length += 1
-        sigscript = bytes(pack(str("B"), length)) + encoded_height
+        data = create_push_script([height] + addtl_push)
         return cls(Transaction._nullprev,
                    4294967295,
-                   sigscript + extra_script_sig, 0)
+                   data + extra_script_sig, 0)
 
 
 class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
@@ -201,9 +198,9 @@ class Transaction(BitcoinEncoding):
                             'prevout_idx': inp[1],
                             'script_sig': hexlify(inp[2]),
                             'seqno': inp[3]} for inp in self.inputs],
-                 'outputs': [{'amount': out[0],
-                              'script_pub_key': hexlify(out[1])}
-                               for out in self.outputs],
+                'outputs': [{'amount': out[0],
+                             'script_pub_key': hexlify(out[1])}
+                            for out in self.outputs],
                 'data': hexlify(self._raw),
                 'locktime': self.locktime,
                 'version': self.version,

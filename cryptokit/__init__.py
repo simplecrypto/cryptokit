@@ -5,6 +5,12 @@ from collections import namedtuple
 from binascii import unhexlify, hexlify
 
 
+def _swap4(s):
+    if len(s) % 4:
+        raise ValueError()
+    return ''.join(s[x:x+4][::-1] for x in xrange(0, len(s), 4))
+
+
 def target_unpack(raw):
     """ Unpacks target given as 0x0404cb (as it's stored in block headers) and
     converts it to an integer. Expects a byte string. """
