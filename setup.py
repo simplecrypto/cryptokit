@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 
 setup(name='cryptokit',
-      version='0.1',
+      version='0.2',
       description='Python objectization of raw data structures used in crypto currencies',
       author='Isaac Cook',
       author_email='isaac@simpload.com',
@@ -13,6 +13,7 @@ setup(name='cryptokit',
       extras_require={
           "quark": ["quark_hash"],
           "ltc": ["ltc_scrypt"],
-          "vtc": ["vtc_scrypt"]
+          "vtc": ["vtc_scrypt"],
+          "drk": ["drk_hash"]
       },
       packages=find_packages())

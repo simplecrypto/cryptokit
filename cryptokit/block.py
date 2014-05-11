@@ -262,19 +262,6 @@ class BlockTemplate(BitcoinEncoding):
         header += unhexlify(nonce)
         return b''.join([header[i*4:i*4+4][::-1] for i in range(0, 20)])
 
-    @classmethod
-    def validate_scrypt(cls, block_header, target, ret_hash=False):
-        """ Hashes a block header with scrypt to confirm if it meets a target
-        requirement or not """
-        assert len(block_header) == 80
-        # builds a block header from the template and confirms a difficulty
-        hsh = scrypt(block_header)
-        hash_int = uint256_from_str(hsh)
-        if ret_hash:
-            return (hash_int < target), ("%064x" % hash_int)
-        else:
-            return hash_int < target
-
     def stratum_params(self):
         """ Generates a list of values to be passed to a work command for
         stratum minus the flush value """
@@ -317,6 +304,11 @@ def sha256_int(data):
     return uint256_from_str(hsh)
 
 
+def drk_hash_int(data):
+    hsh = drk_hash(data)
+    return uint256_from_str(hsh)
+
+
 def scrypt(data):
     from ltc_scrypt import getPoWHash
     hsh = getPoWHash(data)
@@ -332,4 +324,9 @@ def vert_scrypt(data):
 def sha256d(data):
     hsh = sha256(sha256(data).digest()).digest()
     return hsh
+
+
+def drk_hash(data):
+    from drk_hash import getPoWHash
+    hsh = getPoWHash(data)
     return hsh

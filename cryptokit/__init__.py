@@ -35,7 +35,7 @@ def bits_to_shares(bits):
 def target_from_diff(
         difficulty,
         diff=0x00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF):
-    return diff / difficulty
+    return int(diff / difficulty)
 
 
 class Hash(namedtuple('Hash', ['hash'], verbose=False)):
