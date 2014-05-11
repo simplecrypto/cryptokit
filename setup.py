@@ -13,6 +13,7 @@ setup(name='cryptokit',
       extras_require={
           "quark": ["quark_hash"],
           "ltc": ["ltc_scrypt"],
-          "vtc": ["vtc_scrypt"]
+          "vtc": ["vtc_scrypt"],
+          "drk": ["drk_hash"]
       },
       packages=find_packages())
