@@ -8,6 +8,9 @@ from itertools import tee, islice, zip_longest
 from binascii import unhexlify, hexlify
 from struct import pack, unpack
 
+import StringIO
+import json
+
 from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
 from .transaction import Transaction
 from .bitcoin import data as bitcoin_data
@@ -104,6 +107,7 @@ class BlockTemplate(BitcoinEncoding):
         self.transactions = None
         self.job_id = None
         self.total_value = None
+        self._stratum_string = None
 
         # lazy loaded...
         self._merklebranch = None
@@ -273,6 +277,14 @@ class BlockTemplate(BitcoinEncoding):
                 self.version_be_hex,
                 self.bits_be_hex,
                 self.ntime_be_hex]
+
+    def stratum_string(self):
+        if not self._stratum_string:
+            send_params = self.stratum_params() + ["%s"]
+            send_params[0] = "%s"
+            send = {'params': send_params, 'id': None, 'method': 'mining.notify'}
+            self._stratum_string = json.dumps(send, separators=(',', ':')) + "\n"
+        return self._stratum_string
 
     def submit_serial(self, header):
         """ assembles a block bytestring for submission. """
