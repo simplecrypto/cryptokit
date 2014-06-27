@@ -286,15 +286,18 @@ class BlockTemplate(BitcoinEncoding):
             self._stratum_string = json.dumps(send, separators=(',', ':')) + "\n"
         return self._stratum_string
 
-    def submit_serial(self, header):
+    def submit_serial(self, header, raw_coinbase=None):
         """ assembles a block bytestring for submission. """
         block = header
         # encode number of transactions
         block += self.varlen_encode(len(self.transactions) + 1)
         # add the coinbase first
-        if self.coinbase is None:
+        if self.coinbase is None and not raw_coinbase:
             raise AttributeError("Coinbase hasn't been calculated")
-        block += self.coinbase.raw
+        if raw_coinbase:
+            block += raw_coinbase
+        else:
+            block += self.coinbase.raw
         # and all the transaction raw values
         for trans in self.transactions:
             block += trans.raw
