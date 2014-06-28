@@ -280,10 +280,11 @@ class BlockTemplate(BitcoinEncoding):
 
     def stratum_string(self):
         if not self._stratum_string:
-            send_params = self.stratum_params() + ["%s"]
+            send_params = self.stratum_params() + ["REPLACE_ME"]
             send_params[0] = "%s"
             send = {'params': send_params, 'id': None, 'method': 'mining.notify'}
-            self._stratum_string = json.dumps(send, separators=(',', ':')) + "\n"
+            base = json.dumps(send, separators=(',', ':')) + "\n"
+            self._stratum_string = base.replace('"REPLACE_ME"', '%s')
         return self._stratum_string
 
     def submit_serial(self, header, raw_coinbase=None):
