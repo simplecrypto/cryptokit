@@ -1,19 +1,18 @@
 from __future__ import unicode_literals
-from future.builtins import bytes
 from future import standard_library
 standard_library.install_hooks()
 
 from hashlib import sha256
 from itertools import tee, islice, zip_longest
 from binascii import unhexlify, hexlify
-from struct import pack, unpack
+from struct import pack
 
 import StringIO
 import json
 
 from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
 from .transaction import Transaction
-from .bitcoin import data as bitcoin_data
+from .dark import CMasterNodeVote, ser_vector
 
 
 def pairwise(iterator):
@@ -113,6 +112,10 @@ class BlockTemplate(BitcoinEncoding):
         self._merklebranch = None
         self.coinbase = None
 
+        # Darkcoin Masternode Voting
+        self.vmn = []
+        self.masternode_payments = False
+
     @classmethod
     def from_gbt(cls, retval, coinbase, extra_length=0, transactions=None):
         """ Creates a block template object from a get block template call
@@ -129,6 +132,14 @@ class BlockTemplate(BitcoinEncoding):
         inst.bits = unhexlify(retval['bits'])
         inst.version = retval['version']
         inst.total_value = retval['coinbasevalue']
+
+        # Darkcoin
+        inst.masternode_payments = retval.get('masternode_payments')
+        for vote in retval.get('votes', []):
+            v = CMasterNodeVote()
+            v.deserialize(StringIO.StringIO(unhexlify(vote)))
+            inst.vmn.append(v)
+
         # chop the padding off the coinbase1 for extranonces to be put
         if extra_length > 0:
             inst.coinbase1 = coinbase1[:-1 * extra_length]
@@ -250,7 +261,7 @@ class BlockTemplate(BitcoinEncoding):
         coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
         coinbase_raw += self.coinbase2
         self.coinbase = Transaction(coinbase_raw)
-        #coinbase.disassemble()
+        #coinbase.disassemble() for testing to ensure proper coinbase constr
 
         header = self.version_be
         header += self.hashprev_le
@@ -302,6 +313,11 @@ class BlockTemplate(BitcoinEncoding):
         # and all the transaction raw values
         for trans in self.transactions:
             block += trans.raw
+
+        # Darkcoin
+        if self.masternode_payments:
+            block += ser_vector(self.vmn)
+
         return block
 
 
