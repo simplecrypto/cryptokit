@@ -1,9 +1,5 @@
-from __future__ import unicode_literals
-from future import standard_library
-standard_library.install_hooks()
-
 from hashlib import sha256
-from itertools import tee, islice, zip_longest
+from itertools import tee, islice, izip_longest
 from binascii import unhexlify, hexlify
 from struct import pack
 
@@ -20,7 +16,7 @@ def pairwise(iterator):
     list is odd and the second iterator runs out None will be returned for
     second arg """
     a, b = tee(iterator)
-    return zip_longest(islice(a, 0, None, 2), islice(b, 1, None, 2))
+    return izip_longest(islice(a, 0, None, 2), islice(b, 1, None, 2))
 
 
 def merkleroot(iterator, be=False, hashes=False):
