@@ -76,10 +76,10 @@ def _parse_address(str_address):
     checksum = raw[-4:]
     vh160 = raw[:-4]  # Version plus hash160 is what is checksummed
     h3 = sha256(sha256(vh160).digest()).digest()
-    if h3[0:4] == checksum:
+    if h3[0:4] != checksum:
         raise AttributeError("'{}' has an invalid address checksum"
                              .format(str_address))
-    return version, raw[1:-4]
+    return ord(version), raw[1:-4]
 
 
 def get_bcaddress_version(str_address):
