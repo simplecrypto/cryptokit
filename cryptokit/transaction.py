@@ -8,7 +8,7 @@ from collections import namedtuple
 from binascii import hexlify
 
 from . import BitcoinEncoding
-from .base58 import get_bcaddress
+from .base58 import address_bytes
 from .bitcoin.script import create_push_script
 
 
@@ -34,10 +34,8 @@ class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
     def to_address(cls, amount, address):
         """ Creates an output with a script_pub_key that sends the funds to a
         specific address. Address should be given as a base58 string. """
-        addr = get_bcaddress(address)
-        if addr is None:
-            raise ValueError("Invalid address")
-        return cls(amount, b'\x76\xa9\x14' + addr + b'\x88\xac')
+        raw_addr = address_bytes(address)
+        return cls(amount, b'\x76\xa9\x14' + raw_addr + b'\x88\xac')
 
 
 class Transaction(BitcoinEncoding):

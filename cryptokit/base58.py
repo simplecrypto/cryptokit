@@ -60,37 +60,47 @@ def b58decode(v, length):
         else:
             break
 
-    result = chr(0)*nPad + result
+    result = chr(0) * nPad + result
     if length is not None and len(result) != length:
         return None
 
     return result
 
 
-def get_bcaddress_version(str_address):
-    """ Returns None if str_address is invalid. Otherwise returns integer
-    version of address. """
-    addr = b58decode(str_address, 25)
-    if addr is None:
-        return None
-    version = addr[0]
-    checksum = addr[-4:]
-    vh160 = addr[:-4]  # Version plus hash160 is what is checksummed
+def _parse_address(str_address):
+    raw = b58decode(str_address, 25)
+    if raw is None:
+        raise AttributeError("'{}' is invalid base58 of decoded length 25"
+                             .format(str_address))
+    version = raw[0]
+    checksum = raw[-4:]
+    vh160 = raw[:-4]  # Version plus hash160 is what is checksummed
     h3 = sha256(sha256(vh160).digest()).digest()
     if h3[0:4] == checksum:
-        return ord(version)
-    return None
+        raise AttributeError("'{}' has an invalid address checksum"
+                             .format(str_address))
+    return version, raw[1:-4]
+
+
+def get_bcaddress_version(str_address):
+    """ Reverse compatibility non-python implementation """
+    try:
+        return _parse_address(str_address)[0]
+    except AttributeError:
+        return None
 
 
 def get_bcaddress(str_address):
-    """ Returns None if str_address is invalid. Otherwise returns integer
-    version of address. """
-    addr = b58decode(str_address, 25)
-    if addr is None:
+    """ Reverse compatibility non-python implementation """
+    try:
+        return _parse_address(str_address)[1]
+    except AttributeError:
         return None
-    checksum = addr[-4:]
-    vh160 = addr[:-4]  # Version plus hash160 is what is checksummed
-    h3 = sha256(sha256(vh160).digest()).digest()
-    if h3[0:4] == checksum:
-        return addr[1:-4]
-    return None
+
+
+def address_version(str_address):
+    return _parse_address(str_address)[0]
+
+
+def address_bytes(str_address):
+    return _parse_address(str_address)[1]
