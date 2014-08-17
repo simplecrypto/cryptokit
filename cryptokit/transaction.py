@@ -8,6 +8,7 @@ from collections import namedtuple
 from binascii import hexlify
 
 from . import BitcoinEncoding
+from .dark import ser_string
 from .base58 import address_bytes
 from .bitcoin.script import create_push_script
 
@@ -154,6 +155,7 @@ class Transaction(BitcoinEncoding):
             data += script_pub_key
 
         data += pack(str('<L'), self.locktime)
+        data += ser_string(str(""))
 
         self._raw = data
         # reset hash to be recacluated on next grab
