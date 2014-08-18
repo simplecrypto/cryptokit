@@ -5,6 +5,11 @@ from collections import namedtuple
 from binascii import unhexlify, hexlify
 
 
+def sha256d(data):
+    hsh = sha256(sha256(data).digest()).digest()
+    return hsh
+
+
 def _swap4(s):
     if len(s) % 4:
         raise ValueError()
