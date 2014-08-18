@@ -1,5 +1,17 @@
-
 """
+  Copyright 2014 Isaac Cook
+
+  CoinserverRPC has the following improvements over python-bitcoinrpc
+  AuthServiceProxy class:
+
+  - Uses urllib3 to support automatic threadsafe connection pooling. Original
+    version didn't make garuntees about thread pre-emption problems with
+    sharing a single proxy object among multiple threads.
+  - Attempts to offer more python exceptions
+  - Makes no attempts to be backwards compatible
+
+  Previous copyright, from python-bitcoinrpc/bitcoinrpc/authproxy.py:
+  =========================================================
   Copyright 2011 Jeff Garzik
 
   AuthServiceProxy has the following improvements over python-jsonrpc's
@@ -14,7 +26,7 @@
   - uses standard Python json lib
 
   Previous copyright, from python-jsonrpc/jsonrpc/proxy.py:
-
+  =========================================================
   Copyright (c) 2007 Jan-Klaas Kollhof
 
   This file is part of jsonrpc.
@@ -38,28 +50,28 @@ import urllib3
 import base64
 import json
 import decimal
+# For python3 support (module was renamed)
 try:
     import urllib.parse as urlparse
 except ImportError:
     import urlparse
-
-USER_AGENT = "AuthServiceProxy/0.2"
-
-HTTP_TIMEOUT = 30
 
 
 class CoinRPCException(Exception):
     def __init__(self, rpc_error):
         self.error = rpc_error
         if isinstance(rpc_error, dict):
-            self.code = rpc_error.get('code')
-            rpc_error = rpc_error.get('message')
+            # Easy access to the error attributes from the coinserver
+            self.code = int(rpc_error.get('code'))
+            self.rpc_error = rpc_error.get('message')
 
-        super(CoinRPCException, self).__init__(str(rpc_error))
-JSONRPCException = CoinRPCException
+        super(CoinRPCException, self).__init__(str(self.rpc_error))
 
 
-class AuthServiceProxy(object):
+class CoinserverRPC(object):
+    USER_AGENT = "CoinserserverRPC/0.2"
+    HTTP_TIMEOUT = 30
+
     def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT,
                  connection=None, pool_kwargs=None):
         self.__service_url = service_url
@@ -106,8 +118,8 @@ class AuthServiceProxy(object):
             raise AttributeError
         if self.__service_name is not None:
             name = "%s.%s" % (self.__service_name, name)
-        return AuthServiceProxy(self.__service_url, name,
-                                connection=self.__conn)
+        return CoinserverRPC(self.__service_url, name,
+                             connection=self.__conn)
 
     def __call__(self, *args):
         self.__id_count += 1
@@ -117,16 +129,16 @@ class AuthServiceProxy(object):
                                'params': args,
                                'id': self.__id_count})
         response = self.__conn.urlopen('POST', self.__url.path, postdata,
-                                        {'Host': self.__url.hostname,
-                                         'User-Agent': USER_AGENT,
-                                         'Authorization': self.__auth_header,
-                                         'Content-type': 'application/json'})
+                                       {'Host': self.__url.hostname,
+                                        'User-Agent': self.USER_AGENT,
+                                        'Authorization': self.__auth_header,
+                                        'Content-type': 'application/json'})
 
         response = self._get_response(response)
         if response['error'] is not None:
-            raise JSONRPCException(response['error'])
+            raise CoinserverRPC(response['error'])
         elif 'result' not in response:
-            raise JSONRPCException({
+            raise CoinserverRPC({
                 'code': -343, 'message': 'missing JSON-RPC result'})
         else:
             return response['result']
@@ -135,7 +147,7 @@ class AuthServiceProxy(object):
         postdata = json.dumps(list(rpc_call_list))
         response = self.__conn.urlopen('POST', self.__url.path, postdata,
                                        {'Host': self.__url.hostname,
-                                        'User-Agent': USER_AGENT,
+                                        'User-Agent': self.USER_AGENT,
                                         'Authorization': self.__auth_header,
                                         'Content-type': 'application/json'})
 
@@ -143,7 +155,7 @@ class AuthServiceProxy(object):
 
     def _get_response(self, http_response):
         if http_response is None:
-            raise JSONRPCException({
+            raise CoinserverRPC({
                 'code': -342, 'message': 'missing HTTP response from server'})
 
         return json.loads(http_response.data.decode('utf8'),
