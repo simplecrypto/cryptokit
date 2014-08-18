@@ -68,24 +68,81 @@ class CoinRPCException(Exception):
         super(CoinRPCException, self).__init__(str(self.rpc_error))
 
 
+# General application defined errors
+RPC_MISC_ERROR                  = -1, "std::exception thrown in command handling"
+RPC_FORBIDDEN_BY_SAFE_MODE      = -2, "Server is in safe mode, and command is not allowed in safe mode"
+RPC_TYPE_ERROR                  = -3, "Unexpected type was passed as parameter"
+RPC_INVALID_ADDRESS_OR_KEY      = -5, "Invalid address or key"
+RPC_OUT_OF_MEMORY               = -7, "Ran out of memory during operation"
+RPC_INVALID_PARAMETER           = -8, "Invalid, missing or duplicate parameter"
+RPC_DATABASE_ERROR              = -20, "Database error"
+RPC_DESERIALIZATION_ERROR       = -22, "Error parsing or validating structure in raw format"
+
+# P2P client errors
+RPC_CLIENT_NOT_CONNECTED        = -9, "Bitcoin is not connected"
+RPC_CLIENT_IN_INITIAL_DOWNLOAD  = -10, "Still downloading initial blocks"
+
+# Wallet errors
+RPC_WALLET_ERROR                = -4, "Unspecified problem with wallet (key not found etc.)"
+RPC_WALLET_INSUFFICIENT_FUNDS   = -6, "Not enough funds in wallet or account"
+RPC_WALLET_INVALID_ACCOUNT_NAME = -11, "Invalid account name"
+RPC_WALLET_KEYPOOL_RAN_OUT      = -12, "Keypool ran out, call keypoolrefill first"
+RPC_WALLET_UNLOCK_NEEDED        = -13, "Enter the wallet passphrase with walletpassphrase first"
+RPC_WALLET_PASSPHRASE_INCORRECT = -14, "The wallet passphrase entered was incorrect"
+RPC_WALLET_WRONG_ENC_STATE      = -15, "Command given in wrong wallet encryption state (encrypting an encrypted wallet etc.)"
+RPC_WALLET_ENCRYPTION_FAILED    = -16, "Failed to encrypt the wallet"
+RPC_WALLET_ALREADY_UNLOCKED     = -17, "Wallet is already unlocked"
+
+
 class CoinserverRPC(object):
     USER_AGENT = "CoinserserverRPC/0.2"
     HTTP_TIMEOUT = 30
 
-    def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT,
-                 connection=None, pool_kwargs=None):
-        self.__service_url = service_url
-        self.__service_name = service_name
-        self.__url = urlparse.urlparse(service_url)
-        if self.__url.port is None:
-            if self.__url.scheme == 'https':
-                port = 443
-            else:
-                port = 80
+    def __init__(self, service_url=None, service_name=None,
+                 pool_kwargs=None, parent=None, headers=None):
+        if parent:
+            self._conn = parent._conn
+            self._url = parent._url
+            self._id_count = parent._id_count
+            self._service_name = service_name
+            return
+
+        url, auth = self.parse_url_string(service_url)
+        pool_kwargs = pool_kwargs or {}
+        headers = headers or {}
+
+        self.pool_kwargs = dict(maxsize=5, block=True)
+        self.pool_kwargs.update(pool_kwargs)
+
+        self.headers = {'Host': url.hostname,
+                        'User-Agent': self.USER_AGENT,
+                        'Authorization': auth,
+                        'Content-type': 'application/json'}
+        self.headers.update(headers)
+
+        self._url = url
+        self._service_name = service_name
+        self._id_count = 0
+
+        if url.scheme == 'https':
+            cls = urllib3.HTTPSConnectionPool
         else:
-            port = self.__url.port
-        self.__id_count = 0
-        (user, passwd) = (self.__url.username, self.__url.password)
+            cls = urllib3.HTTPConnectionPool
+
+        self._conn = cls(url.hostname,
+                         url.port,
+                         timeout=self.HTTP_TIMEOUT,
+                         headers=self.headers,
+                         **self.pool_kwargs)
+
+    def parse_url_string(self, service_url):
+        url = urlparse.urlparse(service_url)
+        if url.port is None:
+            if url.scheme == 'https':
+                url.port = 443
+            else:
+                url.port = 80
+        (user, passwd) = (url.username, url.password)
         try:
             user = user.encode('utf8')
         except AttributeError:
@@ -95,68 +152,43 @@ class CoinserverRPC(object):
         except AttributeError:
             pass
         authpair = user + b':' + passwd
-        self.__auth_header = b'Basic ' + base64.b64encode(authpair)
-
-        pool_kwargs = pool_kwargs or {}
-        if connection:
-            # Callables re-use the connection of the original proxy
-            self.__conn = connection
-        elif self.__url.scheme == 'https':
-            self.__conn = urllib3.HTTPSConnectionPool(self.__url.hostname,
-                                                      port,
-                                                      timeout=timeout,
-                                                      **pool_kwargs)
-        else:
-            self.__conn = urllib3.HTTPConnectionPool(self.__url.hostname,
-                                                     port,
-                                                     timeout=timeout,
-                                                     **pool_kwargs)
+        return url, b'Basic ' + base64.b64encode(authpair)
 
     def __getattr__(self, name):
         if name.startswith('__') and name.endswith('__'):
             # Python internal stuff
             raise AttributeError
-        if self.__service_name is not None:
-            name = "%s.%s" % (self.__service_name, name)
-        return CoinserverRPC(self.__service_url, name,
-                             connection=self.__conn)
+        if self._service_name is not None:
+            name = "{}.{}".format(self._service_name, name)
+        return CoinserverRPC(service_name=name, parent=self)
 
     def __call__(self, *args):
-        self.__id_count += 1
+        self._id_count += 1
 
         postdata = json.dumps({'version': '1.1',
-                               'method': self.__service_name,
+                               'method': self._service_name,
                                'params': args,
-                               'id': self.__id_count})
-        response = self.__conn.urlopen('POST', self.__url.path, postdata,
-                                       {'Host': self.__url.hostname,
-                                        'User-Agent': self.USER_AGENT,
-                                        'Authorization': self.__auth_header,
-                                        'Content-type': 'application/json'})
+                               'id': self._id_count})
+        response = self._conn.urlopen('POST', self._url.path, postdata)
+        return self._get_response(response)
 
-        response = self._get_response(response)
+    def _batch(self, rpc_call_list):
+        postdata = json.dumps(list(rpc_call_list))
+        response = self._conn.urlopen('POST', self._url.path, postdata)
+        return self._get_response(response)
+
+    def _get_response(self, response):
+        if response is None:
+            raise CoinserverRPC({
+                'code': -342, 'message': 'missing HTTP response from server'})
+
+        response = json.loads(response.data.decode('utf8'),
+                              parse_float=decimal.Decimal)
+
         if response['error'] is not None:
             raise CoinserverRPC(response['error'])
         elif 'result' not in response:
             raise CoinserverRPC({
                 'code': -343, 'message': 'missing JSON-RPC result'})
-        else:
-            return response['result']
 
-    def _batch(self, rpc_call_list):
-        postdata = json.dumps(list(rpc_call_list))
-        response = self.__conn.urlopen('POST', self.__url.path, postdata,
-                                       {'Host': self.__url.hostname,
-                                        'User-Agent': self.USER_AGENT,
-                                        'Authorization': self.__auth_header,
-                                        'Content-type': 'application/json'})
-
-        return self._get_response(response)
-
-    def _get_response(self, http_response):
-        if http_response is None:
-            raise CoinserverRPC({
-                'code': -342, 'message': 'missing HTTP response from server'})
-
-        return json.loads(http_response.data.decode('utf8'),
-                          parse_float=decimal.Decimal)
+        return response['result']
