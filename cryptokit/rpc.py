@@ -179,16 +179,16 @@ class CoinserverRPC(object):
 
     def _get_response(self, response):
         if response is None:
-            raise CoinserverRPC({
+            raise CoinRPCException({
                 'code': -342, 'message': 'missing HTTP response from server'})
 
         response = json.loads(response.data.decode('utf8'),
                               parse_float=decimal.Decimal)
 
         if response['error'] is not None:
-            raise CoinserverRPC(response['error'])
+            raise CoinRPCException(response['error'])
         elif 'result' not in response:
-            raise CoinserverRPC({
+            raise CoinRPCException({
                 'code': -343, 'message': 'missing JSON-RPC result'})
 
         return response['result']
