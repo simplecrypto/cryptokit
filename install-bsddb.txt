@@ -1,0 +1,5 @@
+dpkg -l | grep libdb
+dpkg-query -L libdb5.3++-dev
+export BERKELEYDB_INCDIR=/usr/include                                
+export BERKELEYDB_LIBDIR=/usr/lib/x86_64-linux-gnu               
+pip install bsddb3                                                   
