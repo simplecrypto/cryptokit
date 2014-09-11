@@ -174,7 +174,11 @@ class CoinserverRPC(object):
 
     def _batch(self, rpc_call_list):
         postdata = json.dumps(list(rpc_call_list))
-        response = self._conn.urlopen('POST', self._url.path, postdata)
+        try:
+            response = self._conn.urlopen('POST', self._url.path, postdata)
+        except urllib3.exceptions.HTTPError as e:
+            raise CoinRPCException("Unable to connect to server: {}"
+                                   .format(e))
         return self._get_response(response)
 
     def _get_response(self, response):
@@ -182,8 +186,15 @@ class CoinserverRPC(object):
             raise CoinRPCException({
                 'code': -342, 'message': 'missing HTTP response from server'})
 
-        response = json.loads(response.data.decode('utf8'),
-                              parse_float=decimal.Decimal)
+        try:
+            response = json.loads(response.data.decode('utf8'),
+                                  parse_float=decimal.Decimal)
+        except ValueError:
+            raise CoinRPCException("Return type not JSON")
+
+        if 'error' not in response:
+            raise CoinRPCException({
+                'code': -343, 'message': 'missing JSON-RPC error code'})
 
         if response['error'] is not None:
             raise CoinRPCException(response['error'])
