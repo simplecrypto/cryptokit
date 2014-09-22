@@ -78,6 +78,12 @@ RPC_INVALID_PARAMETER           = -8, "Invalid, missing or duplicate parameter"
 RPC_DATABASE_ERROR              = -20, "Database error"
 RPC_DESERIALIZATION_ERROR       = -22, "Error parsing or validating structure in raw format"
 
+# Connection/Response errors
+RPC_UNKN_CONN_ERROR             = -23, "Urllib http exception thrown in connection handling"
+RPC_MAX_RETRIES_EXCEEDED_ERROR  = -24, "Max connection attempts exceeded"
+RPC_READ_TIMEOUT_ERROR          = -25, "Maximum time spent waiting for a response was exceeded"
+RPC_NOT_JSON_ERROR              = -26, "Response was not valid JSON"
+
 # P2P client errors
 RPC_CLIENT_NOT_CONNECTED        = -9, "Bitcoin is not connected"
 RPC_CLIENT_IN_INITIAL_DOWNLOAD  = -10, "Still downloading initial blocks"
@@ -169,7 +175,22 @@ class CoinserverRPC(object):
                                'method': self._service_name,
                                'params': args,
                                'id': self._id_count})
-        response = self._conn.urlopen('POST', self._url.path, postdata)
+        try:
+            response = self._conn.urlopen('POST', self._url.path, postdata)
+
+        except urllib3.exceptions.MaxRetryError:
+            raise CoinRPCException({
+                'code': -24, 'message': 'RPC connection failed, maximum retries'
+                                        ' exceeded.'})
+        except urllib3.exceptions.ReadTimeoutError:
+            raise CoinRPCException({
+                'code': -25, 'message': 'RPC connection failed, maximum time '
+                                        'spent waiting for a response was '
+                                        'exceeded'})
+        except urllib3.exceptions.HTTPError as e:
+            raise CoinRPCException({
+                'code': -23, 'message': 'Unable to connect to server: '
+                                        '{}'.format(e)})
         return self._get_response(response)
 
     def _batch(self, rpc_call_list):
@@ -190,7 +211,8 @@ class CoinserverRPC(object):
             response = json.loads(response.data.decode('utf8'),
                                   parse_float=decimal.Decimal)
         except ValueError:
-            raise CoinRPCException("Return type not JSON")
+            raise CoinRPCException({
+                'code': -26, 'message': 'Return type not JSON'})
 
         if 'error' not in response:
             raise CoinRPCException({
