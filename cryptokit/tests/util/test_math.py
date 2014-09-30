@@ -1,9 +1,13 @@
+# The following code is a derivative work of the code from the p2pool project,
+# which is licensed GPLv3. This code therefore is also licensed under the terms
+# of the GNU Public License, verison 3.
 from __future__ import division
 
 import random
 import unittest
 
-from p2pool.util import math
+from cryptokit.util import math
+
 
 def generate_alphabet():
     if random.randrange(2):
@@ -12,6 +16,7 @@ def generate_alphabet():
         a = map(chr, xrange(256))
         random.shuffle(a)
         return a[:random.randrange(2, len(a))]
+
 
 class Test(unittest.TestCase):
     def test_add_tuples(self):
