@@ -6,11 +6,14 @@ import struct
 
 from cryptokit.util import memoize
 
+
 class EarlyEnd(Exception):
     pass
 
+
 class LateEnd(Exception):
     pass
+
 
 def read((data, pos), length):
     data2 = data[pos:pos + length]
@@ -18,8 +21,10 @@ def read((data, pos), length):
         raise EarlyEnd()
     return data2, (data, pos + length)
 
+
 def size((data, pos)):
     return len(data) - pos
+
 
 class Type(object):
     __slots__ = []
@@ -59,7 +64,6 @@ class Type(object):
             f = f[0]
         res.reverse()
         return ''.join(res)
-
 
     def unpack(self, data, ignore_trailing=False):
         obj = self._unpack(data, ignore_trailing)
