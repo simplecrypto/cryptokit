@@ -1,6 +1,7 @@
 *.py[cod]
 *.swp
 *.swo
+cover
 
 # tmp saves
 *~
@@ -21,6 +22,7 @@ sdist
 develop-eggs
 .installed.cfg
 .idea
+.nodeids
 
 # Installer logs
 pip-log.txt

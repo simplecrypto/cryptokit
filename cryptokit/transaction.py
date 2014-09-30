@@ -1,9 +1,8 @@
 from __future__ import unicode_literals
-from future.builtins import bytes, range, chr
-from future.builtins.types import newbytes
+from future.builtins import bytes, range
 
+from struct import pack, unpack
 from hashlib import sha256
-from struct import pack
 from collections import namedtuple
 from binascii import hexlify
 
@@ -17,7 +16,7 @@ class Input(namedtuple('Input',
     """ Previous hash needs to be given as a byte array in little endian.
     script_sig is a byte string. Others are simply integers. """
     @classmethod
-    def coinbase(cls, height, addtl_push=None, extra_script_sig=b''):
+    def coinbase(cls, height=None, addtl_push=None, extra_script_sig=b''):
         if not addtl_push:
             addtl_push = []
         # Meet BIP 34 by adding the height of the block
@@ -46,7 +45,7 @@ class Transaction(BitcoinEncoding):
     def __init__(self, raw=None, fees=None, disassemble=False):
         # raw transaction data in byte format
         if raw:
-            if not isinstance(raw, (bytearray, newbytes.newbytes)):
+            if not isinstance(raw, bytes):
                 raise AttributeError("Raw data must be a bytestring, not {}"
                                      .format(type(raw)))
             self._raw = bytes(raw)
@@ -75,7 +74,7 @@ class Transaction(BitcoinEncoding):
         data = self._raw
 
         # first four bytes, little endian unpack
-        self.version = self.funpack('<L', data[:4])
+        self.version = unpack(b'<L', data[:4])[0]
 
         # decode the number of inputs and adjust position counter
         input_count, data = self.varlen_decode(data[4:])
@@ -86,12 +85,12 @@ class Transaction(BitcoinEncoding):
             # get the previous transaction hash and it's output index in the
             # previous transaction
             prevout_hash = data[:32]
-            prevout_idx = self.funpack('<L', data[32:36])
+            prevout_idx = unpack(b'<L', data[32:36])[0]
             # get length of the txn script
             ss_len, data = self.varlen_decode(data[36:])
             script_sig = data[:ss_len]  # get the script
             # get the sequence number
-            seqno = self.funpack('<L', data[ss_len:ss_len + 4])
+            seqno = unpack(b'<L', data[ss_len:ss_len + 4])[0]
 
             # chop off the this transaction from the data for next iteration
             # parsing
@@ -104,7 +103,7 @@ class Transaction(BitcoinEncoding):
         output_count, data = self.varlen_decode(data)
         self.outputs = []
         for i in range(output_count):
-            amount = self.funpack('<Q', data[:8])
+            amount = unpack(b'<Q', data[:8])[0]
             # length of scriptPubKey, parse out
             ps_len, data = self.varlen_decode(data[8:])
             pk_script = data[:ps_len]
@@ -112,7 +111,7 @@ class Transaction(BitcoinEncoding):
             self.outputs.append(
                 Output(amount, pk_script))
 
-        self.locktime = self.funpack('<L', data[:4])
+        self.locktime = unpack(b'<L', data[:4])[0]
         # reset hash to be recacluated on next grab
         self._hash = None
         # ensure no trailing data...
@@ -135,25 +134,25 @@ class Transaction(BitcoinEncoding):
         transaction. split=True will return two halves of the transaction ,
         first chunck will be up until then end of the sigscript, second chunk
         is the remainder. For changing extronance, split off the sigscript """
-        data = pack(str('<L'), self.version)
+        data = pack(b'<L', self.version)
         split_point = None
 
         data += self.varlen_encode(len(self.inputs))
         for prevout_hash, prevout_idx, script_sig, seqno in self.inputs:
             data += prevout_hash
-            data += pack(str('<L'), prevout_idx)
+            data += pack(b'<L', prevout_idx)
             data += self.varlen_encode(len(script_sig))
             data += script_sig
             split_point = len(data)
-            data += pack(str('<L'), seqno)
+            data += pack(b'<L', seqno)
 
         data += self.varlen_encode(len(self.outputs))
         for amount, script_pub_key in self.outputs:
-            data += pack(str('<Q'), amount)
+            data += pack(b'<Q', amount)
             data += self.varlen_encode(len(script_pub_key))
             data += script_pub_key
 
-        data += pack(str('<L'), self.locktime)
+        data += pack(b'<L', self.locktime)
 
         self._raw = data
         # reset hash to be recacluated on next grab
@@ -189,7 +188,7 @@ class Transaction(BitcoinEncoding):
         return hexlify(self.hash[::-1])
 
     def __hash__(self):
-        return self.funpack('i', self.hash)
+        return unpack(b'i', self.hash)[0]
 
     def to_dict(self):
         return {'inputs': [{'prevout_hash': hexlify(inp[0]),

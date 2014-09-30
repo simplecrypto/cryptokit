@@ -1,14 +1,13 @@
 from __future__ import unicode_literals
-from future.builtins import bytes, range
+from future.builtins import int
 
 import unittest
-
 from cryptokit.base58 import get_bcaddress_version, b58encode, b58decode
 from cryptokit.transaction import Input, Transaction, Output
-from cryptokit.block import BlockTemplate, from_merklebranch, merklebranch, merkleroot, scrypt
-from cryptokit import target_unpack, target_from_diff, Hash, uint256_from_str, bits_to_difficulty, bits_to_shares
+from cryptokit.block import BlockTemplate, from_merklebranch, merklebranch, merkleroot
+from cryptokit import (target_unpack, target_from_diff, Hash, uint256_from_str,
+                       bits_to_difficulty, bits_to_shares, reverse_hash)
 
-from hashlib import sha256
 from binascii import unhexlify, hexlify
 from pprint import pprint
 from struct import pack
@@ -188,28 +187,13 @@ class TestMerkleRoot(unittest.TestCase):
         deserial = [unhexlify(hsh)[::-1] for hsh in hashes]
         fake_coinbase = Transaction()
         fake_coinbase._hash = deserial[0]
-        branch = merklebranch(deserial[1:], hashes=True, be=True)
 
         self.assertEquals(
             "35bc46dc56cd6bcb9844323c52eb894a29a3c60add8553a08281fb3eed62cdcf",
-            hexlify(merkleroot(deserial, hashes=True, be=False)[0]).decode('ascii'))
-
-        self.assertEquals(
-            "35bc46dc56cd6bcb9844323c52eb894a29a3c60add8553a08281fb3eed62cdcf",
-            hexlify(from_merklebranch(branch, fake_coinbase)))
+            hexlify(merkleroot(deserial, hashes=True, be=True)[0]).decode('ascii'))
 
 
 class TestBlockTemplate(unittest.TestCase):
-    def test_validate_scrypt(self):
-        """ confirm scrypt validation of difficulty works properly """
-        header_hex = ("01000000f615f7ce3b4fc6b8f61e8f89aedb1d0852507650533a9e3"
-                      "b10b9bbcc30639f279fcaa86746e1ef52d3edb3c4ad8259920d509b"
-                      "d073605c9bf1d59983752a6b06b817bb4ea78e011d012d59d4")
-        header_bytes = header_hex.decode('hex')
-        target = target_unpack(unhexlify("1d018ea7"))
-
-        self.assertTrue(BlockTemplate.validate_scrypt(header_bytes, target))
-
     def test_block_header2(self):
         # pulled from litecoin blockchain and modded slightly with full block header
         block_data = {
@@ -241,17 +225,23 @@ class TestBlockTemplate(unittest.TestCase):
                       .format(idx, coinbase.outputs[0].amount))
 
         pprint(coinbase.to_dict())
-        tmplt = BlockTemplate.from_gbt(block_data, coinbase,
-                                       transactions=transactions)
+        tmplt = BlockTemplate.from_gbt(block_data, coinbase, transactions=transactions)
         self.assertEquals(hexlify(tmplt.merkleroot_be(coinbase)),
                           block_data['merkleroot'])
         header = tmplt.block_header(block_data['nonce'], b'', b'')
         self.assertEquals(block_data['raw_header'], hexlify(header))
-        assert tmplt.validate_scrypt(header,
-                                     target_unpack(unhexlify(block_data['bits'])))
+
+        target = target_unpack(unhexlify(block_data['bits']))
+        assert self.hash("scrypt", header) < target
+
+    def hash(self, algo, dat):
+        if algo == "scrypt":
+            from ltc_scrypt import getPoWHash
+
+        hsh = getPoWHash(dat)
+        return uint256_from_str(hsh)
 
     def test_block_header(self):
-        return
         # pulled from dogecoin blockchain and modded slightly, height 50000
         block_data = {
             'bits': '1c00c7ec',
@@ -299,57 +289,48 @@ class TestBlockTemplate(unittest.TestCase):
         hashes come out the same as cgminer.
         Raw stratum params:
         """
-        gbt = {u'bits': u'1e00e92b',
-               u'coinbaseaux': {u'flags': u'062f503253482f'},
-               u'coinbasevalue': 5000000000,
-               u'curtime': 1392509565,
-               u'height': 203588,
-               u'mintime': 1392508633,
-               u'mutable': [u'time', u'transactions', u'prevblock'],
-               u'noncerange': u'00000000ffffffff',
-               u'previousblockhash': u'b0f5ecb62774f2f07fdc0f72fa0585ae3e8ca78ad8692209a355d12bc690fb73',
-               u'sigoplimit': 20000,
-               u'sizelimit': 1000000,
-               u'target': u'000000e92b000000000000000000000000000000000000000000000000000000',
-               u'transactions': [],
-               u'version': 2}
+        gbt = {u'coinbaseaux': {u'flags': u'062f503253482f'},
+               u'previousblockhash':
+               u'bbfecb98acfb4139e6887a91bca111d43b6d0c87766d931a9459f96860a4ad12',
+               u'target':
+               u'00000fffff000000000000000000000000000000000000000000000000000000',
+               u'noncerange': u'00000000ffffffff', u'transactions': [],
+               u'mintime': 1410492967, u'sigoplimit': 20000, u'curtime':
+               1412046946, u'height': 110, u'version': 2, u'coinbasevalue':
+               5000000000, u'sizelimit': 1000000, u'mutable': [u'time',
+                                                               u'transactions',
+                                                               u'prevblock'],
+               u'bits': u'1e0fffff'}
 
-        extra1 = '0000000000000000'
-        submit = {'extra2': '00000000', 'nonce': 'd5160000',
-                  'result': '000050ccfe8a3efe93b2ee33d2aecf4a60c809995c7dd19368a7d00c86880f30'}
+        submit = {
+            'extra1': '01000000',
+            'extra2': '00000000',
+            'nonce': 'e6020040',
+            'ntime': '542a2062',
+            'result': 16455936234526845758832652245939027979053908483659789961339446201489738388,
+            'pool_address': 'mri1PEngsRuU6aLKQJ5gGePUdEo76C6DeT'}
 
         # build a block template object from the raw data
         coinbase = Transaction()
         coinbase.version = 2
-        coinbase.inputs.append(Input.coinbase(gbt['height'], b'\0' * 12))
-        coinbase.outputs.append(Output.to_address(gbt['coinbasevalue'], 'D7QJyeBNuwEqxsyVCLJi3pHs64uPdMDuBa'))
+        coinbase_in = Input.coinbase(
+            gbt['height'], addtl_push=[], extra_script_sig=(b'\0' * 8))
+        coinbase.inputs.append(coinbase_in)
+        coinbase.outputs.append(Output.to_address(gbt['coinbasevalue'],
+                                                  submit['pool_address']))
 
         transactions = []
         for trans in gbt['transactions']:
             new_trans = Transaction(unhexlify(trans['data']), fees=trans['fee'])
-            assert trans['hash'] == new_trans.lehexhash
             transactions.append(new_trans)
-        bt = BlockTemplate.from_gbt(gbt, coinbase, 12, transactions)
-        send_params = bt.stratum_params()
-        print("job_id: {0}\nprevhash: {1}\ncoinbase1: {2}\ncoinbase2: {3}"
-              "\nmerkle_branch: {4}\nversion: {5}\nnbits: {6}\nntime: {7}"
-              .format(*send_params))
+        bt = BlockTemplate.from_gbt(gbt, coinbase, 8, transactions)
 
-        header = bt.block_header(submit['nonce'], extra1, submit['extra2'])
-        hash_bin = scrypt(header)
-        target = target_from_diff(1, 0x0000FFFF00000000000000000000000000000000000000000000000000000000)
-
-        hash_int = uint256_from_str(hash_bin)
-        hash_hex = "%064x" % hash_int
-        self.assertEquals(hash_hex, submit['result'])
-        assert hash_int < target
-
-
-class TestInput(unittest.TestCase):
-    def test_coinbase_numeric(self):
-        inp = Input.coinbase(120000)
-        assert int.from_bytes(inp.script_sig[1:], byteorder='little') == 120000
-        assert int.from_bytes(inp.script_sig[:1], byteorder='little') == 3
+        header = bt.block_header(submit['nonce'],
+                                 submit['extra1'],
+                                 submit['extra2'],
+                                 ntime=submit['ntime'])
+        hash_int = self.hash("scrypt", header)
+        self.assertEquals(hash_int, submit['result'])
 
 
 class TestUtil(unittest.TestCase):
@@ -360,13 +341,12 @@ class TestUtil(unittest.TestCase):
             0x00000000FFFF0000000000000000000000000000000000000000000000000000)
 
     def test_bits_to_diff(self):
-        # assert a difficulty of zero returns the correct integer
+        # lowest difficulty for btc
         self.assertEquals(bits_to_difficulty("1d00ffff"), 1)
         self.assertEquals(int(bits_to_difficulty("1b3be743")), 1094)
 
     def test_bits_to_shares(self):
-        # assert a difficulty of zero returns the correct integer
-        self.assertEquals(bits_to_shares("1b368901"), 1)
+        self.assertEquals(bits_to_shares("1d00ffff"), 65536)
 
     def test_target_from_diff(self):
         # assert a difficulty of zero returns the correct integer
@@ -386,7 +366,7 @@ class TransactionTests(unittest.TestCase):
     def test_coinbase(self):
         coinbase = Transaction()
         coinbase.version = 2
-        coinbase.inputs.append(Input.coinbase(12000, b'\0' * 6))
+        coinbase.inputs.append(Input.coinbase(12000, extra_script_sig=b'\0' * 6))
         coinbase.outputs.append(
             Output.to_address(50000, 'D7QJyeBNuwEqxsyVCLJi3pHs64uPdMDuBa'))
         one, two = coinbase.assemble(split=True)

@@ -1,12 +1,15 @@
-from hashlib import sha256
-from itertools import tee, islice, izip_longest
+try:
+    from itertools import tee, islice as slice, izip_longest as zip_longest
+except ImportError:
+    from itertools import tee, slice, zip_longest
 from binascii import unhexlify, hexlify
 from struct import pack
 
 import StringIO
 import json
 
-from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
+from . import (BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str,
+               sha256d)
 from .transaction import Transaction
 from .dark import CMasterNodeVote, ser_vector
 
@@ -16,7 +19,7 @@ def pairwise(iterator):
     list is odd and the second iterator runs out None will be returned for
     second arg """
     a, b = tee(iterator)
-    return izip_longest(islice(a, 0, None, 2), islice(b, 1, None, 2))
+    return zip_longest(slice(a, 0, None, 2), slice(b, 1, None, 2))
 
 
 def merkleroot(iterator, be=False, hashes=False):
@@ -34,8 +37,7 @@ def merkleroot(iterator, be=False, hashes=False):
     size = len(h_list)
     # build our tree by repeated halving of the list
     while len(h_list) > 1:
-        h_list = [sha256(sha256(h1 + (h2 or h1)).digest()).digest()
-                  for h1, h2 in pairwise(h_list)]
+        h_list = [sha256d(h1 + (h2 or h1)) for h1, h2 in pairwise(h_list)]
     # return little endian
     if be:
         return h_list[0][::-1], size
@@ -50,7 +52,7 @@ def merklebranch(iterator, be=True, hashes=False):
     def shamaster(h1, h2):
         if h1 is None:
             return None
-        return sha256(sha256(h1 + (h2 or h1)).digest()).digest()
+        return sha256d(h1 + (h2 or h1))
 
     # put a placeholder in our level zero that pretends to be the coinbase
     if not hashes:
@@ -77,7 +79,7 @@ def from_merklebranch(branch_list, coinbase, be=False):
     Transaction object. """
     root = coinbase.behash
     for node in branch_list:
-        root = sha256(sha256(root + node).digest()).digest()
+        root = sha256d(root + node)
 
     # return be if requested
     if be:
@@ -127,7 +129,7 @@ class BlockTemplate(BitcoinEncoding):
         inst.ntime = retval['curtime']
         inst.bits = unhexlify(retval['bits'])
         inst.version = retval['version']
-        inst.total_value = retval['coinbasevalue']
+        inst.total_value = retval.get('coinbasevalue')
 
         # Darkcoin
         inst.masternode_payments = retval.get('masternode_payments')
@@ -198,25 +200,25 @@ class BlockTemplate(BitcoinEncoding):
     # =================================================
     @property
     def ntime_be_hex(self):
-        return hexlify(pack(str(">I"), self.ntime))
+        return hexlify(pack(b">I", self.ntime))
 
     @property
     def ntime_be(self):
-        return pack(str(">I"), self.ntime)
+        return pack(b">I", self.ntime)
 
     @property
     def ntime_le(self):
-        return pack(str("<I"), self.ntime)
+        return pack(b"<I", self.ntime)
 
     # VERSION
     # =================================================
     @property
     def version_be(self):
-        return pack(str(">i"), self.version)
+        return pack(b">i", self.version)
 
     @property
     def version_be_hex(self):
-        return hexlify(pack(str(">i"), self.version))
+        return hexlify(pack(b">i", self.version))
 
     # MERKLEROOT
     # =================================================
@@ -233,7 +235,7 @@ class BlockTemplate(BitcoinEncoding):
         r = uint256_from_str(self.merkleroot_be(coinbase))
         rs = b""
         for i in xrange(8):
-            rs += pack(str(">I"), r & 0xFFFFFFFFL)
+            rs += pack(b">I", r & 0xFFFFFFFFL)
             r >>= 32
         return rs[::-1]
 
