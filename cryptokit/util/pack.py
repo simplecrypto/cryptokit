@@ -30,6 +30,7 @@ class Type(object):
     __slots__ = []
 
     def __hash__(self):
+        # XXX: Will this work with slots?
         rval = getattr(self, '_hash', None)
         if rval is None:
             try:
@@ -88,6 +89,7 @@ class Type(object):
 
         return packed_size
 
+
 class VarIntType(Type):
     def read(self, file):
         data, file = read(file, 1)
@@ -120,6 +122,7 @@ class VarIntType(Type):
         else:
             raise ValueError('int too large for varint')
 
+
 class VarStrType(Type):
     _inner_size = VarIntType()
 
@@ -129,6 +132,7 @@ class VarStrType(Type):
 
     def write(self, file, item):
         return self._inner_size.write(file, len(item)), item
+
 
 class EnumType(Type):
     def __init__(self, inner, pack_to_unpack):
@@ -152,6 +156,7 @@ class EnumType(Type):
             raise ValueError('enum item (%r) not in unpack_to_pack (%r)' % (item, self.unpack_to_pack))
         return self.inner.write(file, self.unpack_to_pack[item])
 
+
 class ListType(Type):
     _inner_size = VarIntType()
 
@@ -174,7 +179,9 @@ class ListType(Type):
             file = self.type.write(file, subitem)
         return file
 
+
 class StructType(Type):
+    """ A wrapper around Python's struct pack and unpack """
     __slots__ = 'desc length'.split(' ')
 
     def __init__(self, desc):
@@ -187,6 +194,7 @@ class StructType(Type):
 
     def write(self, file, item):
         return file, struct.pack(self.desc, item)
+
 
 @memoize.fast_memoize_multiple_args
 class IntType(Type):
@@ -221,48 +229,38 @@ class IntType(Type):
             raise ValueError('invalid int value - %r' % (item,))
         return file, a2b_hex(self.format_str % (item,))[::self.step]
 
-class IPV6AddressType(Type):
-    def read(self, file):
-        data, file = read(file, 16)
-        if data[:12] == '00000000000000000000ffff'.decode('hex'):
-            return '.'.join(str(ord(x)) for x in data[12:]), file
-        return ':'.join(data[i*2:(i+1)*2].encode('hex') for i in xrange(8)), file
-
-    def write(self, file, item):
-        if ':' in item:
-            data = ''.join(item.replace(':', '')).decode('hex')
-        else:
-            bits = map(int, item.split('.'))
-            if len(bits) != 4:
-                raise ValueError('invalid address: %r' % (bits,))
-            data = '00000000000000000000ffff'.decode('hex') + ''.join(chr(x) for x in bits)
-        assert len(data) == 16, len(data)
-        return file, data
 
 _record_types = {}
+
 
 def get_record(fields):
     fields = tuple(sorted(fields))
     if 'keys' in fields or '_packed_size' in fields:
+        # XXX: Why?
         raise ValueError()
+
     if fields not in _record_types:
         class _Record(object):
             __slots__ = fields + ('_packed_size',)
+
             def __init__(self):
                 self._packed_size = None
+
             def __repr__(self):
                 return repr(dict(self))
+
             def __getitem__(self, key):
                 return getattr(self, key)
+
             def __setitem__(self, key, value):
                 setattr(self, key, value)
-            #def __iter__(self):
-            #    for field in fields:
-            #        yield field, getattr(self, field)
+
             def keys(self):
                 return fields
+
             def get(self, key, default=None):
                 return getattr(self, key, default)
+
             def __eq__(self, other):
                 if isinstance(other, dict):
                     return dict(self) == other
@@ -274,10 +272,13 @@ def get_record(fields):
                 elif other is None:
                     return False
                 raise TypeError()
+
             def __ne__(self, other):
                 return not (self == other)
+
         _record_types[fields] = _Record
     return _record_types[fields]
+
 
 class ComposedType(Type):
     def __init__(self, fields):
@@ -297,6 +298,7 @@ class ComposedType(Type):
             file = type_.write(file, item[key])
         return file
 
+
 class PossiblyNoneType(Type):
     def __init__(self, none_value, inner):
         self.none_value = none_value
@@ -310,6 +312,7 @@ class PossiblyNoneType(Type):
         if item == self.none_value:
             raise ValueError('none_value used')
         return self.inner.write(file, self.none_value if item is None else item)
+
 
 class FixedStrType(Type):
     def __init__(self, length):

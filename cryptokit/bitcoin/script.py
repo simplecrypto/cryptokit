@@ -3,10 +3,19 @@
 # of the GNU Public License, verison 3.
 from cryptokit.util import math, pack
 
+
+""" Generate a dictionary of functions where the key is the opcode, and the
+function handles parsing that specific opcode. """
+
+
 def reads_nothing(f):
     return None, f
+
+
 def protoPUSH(length):
     return lambda f: pack.read(f, length)
+
+
 def protoPUSHDATA(size_len):
     def _(f):
         length_str, f = pack.read(f, size_len)
@@ -34,7 +43,10 @@ opcodes[173] = 'CHECKSIGVERIFY', reads_nothing
 opcodes[174] = 'CHECKMULTISIG', reads_nothing
 opcodes[175] = 'CHECKMULTISIGVERIFY', reads_nothing
 
+
 def parse(script):
+    """ Parses out opcodes and opcode arguments from transaction scripts.
+    See https://en.bitcoin.it/wiki/Script """
     f = script, 0
     while pack.size(f):
         opcode_str, f = pack.read(f, 1)
@@ -43,7 +55,11 @@ def parse(script):
         opcode_arg, f = read_func(f)
         yield opcode_name, opcode_arg
 
+
 def get_sigop_count(script):
+    """ Count the sigops (signature operations) for a script. This is used to
+    limit block creation size by estimating verification time. More info in
+    BIP0016 and BIP0022. """
     weights = {
         'CHECKSIG': 1,
         'CHECKSIGVERIFY': 1,
@@ -52,7 +68,9 @@ def get_sigop_count(script):
     }
     return sum(weights.get(opcode_name, 0) for opcode_name, opcode_arg in parse(script))
 
-def create_push_script(datums): # datums can be ints or strs
+
+def create_push_script(datums):
+    """ datums can be ints or strs """
     res = []
     for datum in datums:
         if isinstance(datum, (int, long)):
