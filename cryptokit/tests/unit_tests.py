@@ -4,6 +4,7 @@ from future.builtins import int
 import unittest
 from cryptokit.base58 import get_bcaddress_version, b58encode, b58decode
 from cryptokit.transaction import Input, Transaction, Output
+import cryptokit.bitcoin.data as bitcoin_data
 from cryptokit.block import BlockTemplate, from_merklebranch, merklebranch, merkleroot
 from cryptokit import (target_unpack, target_from_diff, Hash, uint256_from_str,
                        bits_to_difficulty, bits_to_shares, reverse_hash)
@@ -266,7 +267,7 @@ class TestBlockTemplate(unittest.TestCase):
         coinbase = None
         transactions = [Transaction(unhexlify(data.encode('ascii')), disassemble=True)
                         for _, data in block_data['tx']]
-        self.assertEquals(hexlify(merkleroot(transactions)[0]), block_data['merkleroot'])
+        self.assertEquals(hexlify(merkleroot(transactions, be=True)[0]), block_data['merkleroot'])
         for obj, hsh in zip(transactions, block_data['tx']):
             hsh = hsh[0]
             obj.disassemble()
@@ -279,10 +280,14 @@ class TestBlockTemplate(unittest.TestCase):
 
         tmplt = BlockTemplate.from_gbt(block_data, coinbase,
                                        transactions=transactions)
-        self.assertEquals(hexlify(tmplt.merkleroot(coinbase)),
+        self.assertEquals(hexlify(tmplt.merkleroot_be(coinbase)),
                           block_data['merkleroot'])
         header = tmplt.block_header(block_data['nonce'], b'', b'')
-        assert tmplt.validate_scrypt(header, target_unpack(unhexlify(block_data['bits'])))
+        target = bitcoin_data.FloatingInteger.from_hex(block_data['bits']).target
+        hash_int = self.hash("scrypt", header)
+        print hash_int
+        print target
+        self.assertLessEqual(hash_int, target)
 
     def test_stratum_confirm(self):
         """ Test some raw data from cgminer submitting a share, confirm

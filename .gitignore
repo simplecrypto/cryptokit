@@ -22,7 +22,7 @@ sdist
 develop-eggs
 .installed.cfg
 .idea
-.nodeids
+.noseids
 
 # Installer logs
 pip-log.txt

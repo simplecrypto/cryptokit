@@ -3,6 +3,7 @@
 # of the GNU Public License, verison 3.
 from __future__ import division
 
+import binascii
 import hashlib
 import warnings
 
@@ -51,6 +52,11 @@ class FloatingInteger(object):
         bits = pack.IntType(32).unpack(bits2)
         return cls(bits)
 
+    @classmethod
+    def from_hex(cls, hex_bits):
+        raw = binascii.unhexlify(hex_bits)
+        return cls(pack.IntType(32).unpack(raw))
+
     def __init__(self, bits, target=None):
         self.bits = bits
         self._target = None
@@ -89,6 +95,7 @@ class FloatingIntegerType(pack.Type):
 
     def write(self, file, item):
         return self._inner.write(file, item.bits)
+
 
 tx_type = pack.ComposedType([
     ('version', pack.IntType(32)),
