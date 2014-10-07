@@ -237,6 +237,8 @@ class CoinRPC(object):
         """
         Runs the 'sendmany' rpc call on the given currency's rpc server
         """
+        # Coercy account to a STR
+        account = str(account)
 
         # Coerce all amounts to float
         for k, amount in recip.iteritems():
