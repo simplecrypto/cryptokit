@@ -175,10 +175,52 @@ class CoinRPC(object):
             return tx
 
     @rpc_conn
+    def list_transactions(self, account="''", count=10):
+        """
+        Runs the 'listtransactions' rpc call on the given currency's rpc server
+        and returns transactions
+
+        listtransactions sample output:
+
+        [
+            {
+                "account" : "scm",
+                "address" : "LKyGLZ4tLYjWEDGFzT94KvCdUFYvm7KyXj",
+                "category" : "send",
+                "amount" : -7.97790612,
+                "fee" : 0.00000000,
+                "confirmations" : 2819,
+                "blockhash" : "2da8acefd9e9b5c0c2b0ccb655e1423c950a8c7877847c614f48a5e55235026f",
+                "blockindex" : 1,
+                "blocktime" : 1410849255,
+                "txid" : "0e9b03a9d212263b1c28a9945463a8d3d451926885b2f2c2106f49c8fd6bbc95",
+                "time" : 1410849251,
+                "timereceived" : 1410849251
+            }
+        ]
+        """
+        result = self.conn.listtransactions(account, count)
+
+        self.logger.debug("Received {} {} transactions"
+                          .format(len(result), self.currency_code))
+
+        transactions = []
+        try:
+            for tx_info in result:
+                tx = CoinTransaction.create(tx_info, self.currency_code)
+                transactions.append(tx)
+        except KeyError as e:
+            self.logger.warn("Key error grabbing {} transactions. Got: {}"
+                             .format(self.currency_code, e))
+            raise CoinRPCException
+        else:
+            return transactions
+
+    @rpc_conn
     def unlock_wallet(self, seconds=10):
-        if self.wallet_pass:
+        if self.coinserv['wallet_pass']:
             try:
-                wallet = self.conn.walletpassphrase(self.wallet_pass, seconds)
+                wallet = self.conn.walletpassphrase(self.coinserv['wallet_pass'], seconds)
             except CoinRPCException as e:
                 # Some wallets get grumpy about unlock attempts when they're
                 # not encrypted
@@ -197,7 +239,7 @@ class CoinRPC(object):
         """
 
         # Coerce all amounts to float
-        for k, amount in recip.values():
+        for k, amount in recip.iteritems():
             recip[k] = float(amount)
 
         self.unlock_wallet()
