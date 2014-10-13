@@ -40,7 +40,8 @@ class ChecksummedType(pack.Type):
 
 
 class FloatingInteger(object):
-    """ Wrap the "bits" custom floating point serialization used by Bitcoin """
+    """ Wrap the "bits" custom floating point serialization used by Bitcoin.
+    Almost always used to represent the network difficulty/target. """
     __slots__ = ['bits', '_target']
 
     @classmethod
@@ -57,6 +58,10 @@ class FloatingInteger(object):
         raw = binascii.unhexlify(hex_bits)
         return cls(pack.IntType(32).unpack(raw))
 
+    @classmethod
+    def from_difficulty(cls, difficulty_int, diff1):
+        return cls.from_target_upper_bound(difficulty_int * diff1)
+
     def __init__(self, bits, target=None):
         self.bits = bits
         self._target = None
@@ -65,10 +70,16 @@ class FloatingInteger(object):
 
     @property
     def target(self):
-        res = self._target
-        if res is None:
-            res = self._target = math.shift_left(self.bits & 0x00ffffff, 8 * ((self.bits >> 24) - 3))
-        return res
+        if self._target is None:
+            self._target = math.shift_left(
+                self.bits & 0x00ffffff, 8 * ((self.bits >> 24) - 3))
+        return self._target
+
+    def difficulty(self, diff1):
+        return self._target / diff1
+
+    def to_shares(self, hashes_per_share):
+        return (self.difficulty * (2 ** 32)) / hashes_per_share
 
     def __hash__(self):
         return hash(self.bits)
@@ -217,47 +228,6 @@ def check_merkle_link(tip_hash, link):
         dict(left=h, right=c) if (link['index'] >> i) & 1 else
         dict(left=c, right=h)
     )), enumerate(link['branch']), tip_hash)
-
-
-# targets
-def target_to_average_attempts(target):
-    assert 0 <= target and isinstance(target, (int, long)), target
-    if target >= 2**256:
-        warnings.warn('target >= 2**256!')
-    return 2**256//(target + 1)
-
-
-def average_attempts_to_target(average_attempts):
-    assert average_attempts > 0
-    return min(int(2**256/average_attempts - 1 + 0.5), 2**256-1)
-
-
-def target_to_difficulty(target):
-    assert 0 <= target and isinstance(target, (int, long)), target
-    if target >= 2**256:
-        warnings.warn('target >= 2**256!')
-    return (0xffff0000 * 2**(256-64) + 1)/(target + 1)
-
-
-def difficulty_to_target(difficulty):
-    assert difficulty >= 0
-    if difficulty == 0:
-        return 2**256-1
-    return min(int((0xffff0000 * 2**(256-64) + 1)/difficulty - 1 + 0.5), 2**256-1)
-
-
-# human addresses
-base58_alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-
-
-def base58_encode(bindata):
-    bindata2 = bindata.lstrip(chr(0))
-    return base58_alphabet[0]*(len(bindata) - len(bindata2)) + math.natural_to_string(math.string_to_natural(bindata2), base58_alphabet)
-
-
-def base58_decode(b58data):
-    b58data2 = b58data.lstrip(base58_alphabet[0])
-    return chr(0)*(len(b58data) - len(b58data2)) + math.natural_to_string(math.string_to_natural(b58data2, base58_alphabet))
 
 
 human_address_type = ChecksummedType(pack.ComposedType([

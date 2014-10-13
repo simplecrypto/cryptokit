@@ -3,8 +3,8 @@ try:
 except ImportError:
     from itertools import tee, slice, zip_longest
 from binascii import unhexlify, hexlify
-from struct import pack
 
+import struct
 import StringIO
 import json
 
@@ -85,6 +85,25 @@ def from_merklebranch(branch_list, coinbase, be=False):
     if be:
         return root[::-1]
     return root
+
+
+class Block(object):
+    def __init__(self, raw=None):
+        self.hashprev = None
+        self.ntime = None
+        self.bits = None
+        self.version = 2
+        self.transactions = []
+
+    @classmethod
+    def from_stream(self, f):
+        (version, previous_block_hash, merkle_root,
+            timestamp, difficulty, nonce) = struct.unpack(
+                "<L32s32sLLL", f.read(4 + 32 + 32 + (4 * 3)))
+
+        transaction_count = parse_bc_int(f)
+        for i in xrange(transaction_count):
+            self.transactions.append(Transaction.from_stream(f))
 
 
 class BlockTemplate(BitcoinEncoding):
