@@ -2,13 +2,13 @@ from __future__ import unicode_literals
 from future.builtins import range
 
 from hashlib import sha256
+from StringIO import StringIO
 
 import struct
 import binascii
 
 
 def sha256d(data):
-    hsh = sha256(sha256(data).digest()).digest()
     return hsh
 
 
@@ -34,6 +34,22 @@ def parse_bc_string(f):
     return f.read(size)
 
 
+def stream_bc_int(f, v):
+    if v < 253:
+        f.write(struct.pack("<B", v))
+    elif v <= 65535:
+        f.write(b'\xfd' + struct.pack("<H", v))
+    elif v <= 0xffffffff:
+        f.write(b'\xfe' + struct.pack("<L", v))
+    else:
+        f.write(b'\xff' + struct.pack("<Q", v))
+
+
+def stream_bc_string(f, v):
+    stream_bc_int(f, len(v))
+    f.write(v)
+
+
 class Hash(int):
     """ Helper object for dealing with hash encoding. Most functions from
     bitcoind deal with little-endian values while most consumer use
@@ -54,43 +70,25 @@ class Hash(int):
     def be(self):
         return binascii.unhexlify("%16x" % (self,))
 
+    @classmethod
+    def from_sha256d(cls, data):
+        return cls.from_be(sha256(sha256(data).digest()).digest())
+
 
 class BitcoinEncoding(object):
+    @classmethod
+    def from_hex(cls, hex_data):
+        return cls.from_stream(StringIO(binascii.unhexlify(hex_data)))
 
-    def varlen_decode(self, dat):
-        """ Unpacks the variable count bytes present in several bitcoin
-        objects. First byte signals overall length of and then byte lengths are
-        reads accordingly. """
-        if dat[0] == 0xff:
-            return struct.unpack(b'<Q', dat[1:9])[0], dat[9:]
-        if dat[0] == 0xfe:
-            return struct.unpack(b'<L', dat[1:5])[0], dat[5:]
-        if dat[0] == 0xfd:
-            return struct.unpack(b'<H', dat[1:3])[0], dat[3:]
-        return dat[0], dat[1:]
+    @classmethod
+    def from_bytes(cls, data):
+        return cls.from_stream(StringIO(data))
 
-    def varlen_encode(self, dat):
-        """ This is the inverse of the above function, accepting a count and
-        encoding that count """
-        if dat < 0xfd:
-            return struct.pack(b'<B', dat)
-        if dat <= 0xffff:
-            return b'\xfd' + struct.pack(b'<H', dat)
-        if dat <= 0xffffffff:
-            return b'\xfe' + struct.pack(b'<L', dat)
-        return b'\xff' + struct.pack(b'<Q', dat)
+    def to_hex(cls):
+        return cls.to_stream().read()
 
-
-def uint256_from_str(s):
-    r = 0L
-    t = struct.unpack(b"<IIIIIIII", s[:32])
-    for i in range(8):
-        r += t[i] << (i * 32)
-    return r
-
-
-def reverse_hash(h):
-    # This only revert byte order, nothing more
-    if len(h) != 64:
-        raise Exception('hash must have 64 hexa chars')
-    return ''.join([h[56 - i:64 - i] for i in range(0, 64, 8)])
+    def to_bytes(cls):
+        f = StringIO()
+        cls.to_stream(f)
+        f.seek(0)
+        return f.read()

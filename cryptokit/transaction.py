@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from future.builtins import bytes, range
+from future.builtins import range
 
 import struct
 
@@ -7,7 +7,7 @@ from hashlib import sha256
 from collections import namedtuple
 from binascii import hexlify
 
-from . import BitcoinEncoding, Hash, parse_bc_string, parse_bc_int
+from . import BitcoinEncoding, Hash, parse_bc_string, parse_bc_int, stream_bc_string
 from .base58 import address_bytes
 from .bitcoin.script import create_push_script
 
@@ -28,7 +28,8 @@ class Input(namedtuple(
     def to_stream(self, f):
         f.write(self.prevout_hash.le)
         f.write(struct.pack("<L", self.prevout_idx))
-        f.write(struct.pack("<L", self.prevout_idx))
+        stream_bc_string(f, self.script_sig)
+        f.write(struct.pack("<L", self.seqno))
 
     @classmethod
     def coinbase(cls, height=None, addtl_push=None, extra_script_sig=b''):
@@ -46,6 +47,17 @@ class Input(namedtuple(
 
 class Output(namedtuple('Output', ['amount', 'script_pub_key'])):
     """ script_pub_key is a byte string. Amount is an integer. """
+    @classmethod
+    def from_stream(cls, f):
+        return cls(
+            amount=struct.unpack("<Q"),
+            script_sig=parse_bc_string(f),
+        )
+
+    def to_stream(self, f):
+        f.write(struct.pack("<Q", self.amount))
+        stream_bc_string(f, self.script_pub_key)
+
     @classmethod
     def to_address(cls, amount, address):
         """ Creates an output with a script_pub_key that sends the funds to a
@@ -65,6 +77,7 @@ class Transaction(BitcoinEncoding):
         self.locktime = 0
         self.version = 1
 
+    @classmethod
     def from_stream(cls, f):
         self = cls()
         self.version, = struct.unpack("<L", f)
@@ -82,28 +95,14 @@ class Transaction(BitcoinEncoding):
         transaction. """
         f.write(struct.pack('<L', self.version))
         f.write(self.varlen_encode(len(self.inputs)))
-        for prevout_hash, prevout_idx, script_sig, seqno in self.inputs:
-            data += prevout_hash
-            data += pack(b'<L', prevout_idx)
-            data += self.varlen_encode(len(script_sig))
-            data += script_sig
-            split_point = len(data)
-            data += pack(b'<L', seqno)
+        for input_obj in self.inputs:
+            input_obj.to_stream(f)
 
-        data += self.varlen_encode(len(self.outputs))
-        for amount, script_pub_key in self.outputs:
-            data += pack(b'<Q', amount)
-            data += self.varlen_encode(len(script_pub_key))
-            data += script_pub_key
+        f.write(self.varlen_encode(len(self.outputs)))
+        for output_obj in self.outputs:
+            output_obj.to_stream(f)
 
-        data += pack(b'<L', self.locktime)
-
-        self._raw = data
-        # reset hash to be recacluated on next grab
-        self._hash = None
-        if split:
-            return data[:split_point], data[split_point:]
-        return data
+        f.write(struct.pack('<L', self.locktime))
 
     @property
     def raw(self):
@@ -117,22 +116,6 @@ class Transaction(BitcoinEncoding):
         if self._hash is None:
             self._hash = sha256(sha256(self._raw).digest()).digest()[::-1]
         return self._hash
-    lehash = hash
-
-    @property
-    def behash(self):
-        return self.hash[::-1]
-
-    @property
-    def lehexhash(self):
-        return hexlify(self.hash)
-
-    @property
-    def behexhash(self):
-        return hexlify(self.hash[::-1])
-
-    def __hash__(self):
-        return unpack(b'i', self.hash)[0]
 
     def to_dict(self):
         return {'inputs': [{'prevout_hash': hexlify(inp[0]),
