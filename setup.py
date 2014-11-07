@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 
 setup(name='cryptokit',
-      version='0.2.13',
+      version='0.2.14',
       description='Python objectization of raw data structures used in crypto currencies',
       author='Isaac Cook',
       author_email='isaac@simpload.com',

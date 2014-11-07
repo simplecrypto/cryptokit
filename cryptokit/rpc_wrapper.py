@@ -42,13 +42,13 @@ class CoinTransaction(object):
                  currency=currency,
                  quantity=tx_info['amount'],
                  confirmations=tx_info['confirmations'],
-                 fee=tx_info.get('fee'),
+                 fee=tx_info.get('fee', 0),
                  time=datetime.datetime.fromtimestamp(tx_info['time']),
                  blockhash=tx_info.get('blockhash'))
 
         # Fix things for Syscoin edge case
         if currency == 'SYS':
-            tx.quantity = tx_info['fee'] + tx_info['amount']
+            tx.quantity += tx.fee
 
         return tx
 
