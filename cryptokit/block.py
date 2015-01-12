@@ -132,7 +132,6 @@ class BlockTemplate(BitcoinEncoding):
         inst.bits = unhexlify(retval['bits'])
         inst.version = retval['version']
         inst.total_value = retval.get('coinbasevalue')
-	inst.signature = ser_string(b"")
 
         # Darkcoin
         inst.masternode_payments = retval.get('masternode_payments')
@@ -246,6 +245,33 @@ class BlockTemplate(BitcoinEncoding):
     def fee_total(self):
         return sum([t.fees or 0 for t in self.transactions])
 
+    def raw_block(self, nonce, extra1, extra2, ntime=None, pos=False):
+        # calculate the merkle root by assembling the coinbase transaction
+
+        coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
+        coinbase_raw += self.coinbase2
+        self.coinbase = Transaction(coinbase_raw)
+
+        header = self.version_be
+        header += self.hashprev_le
+        header += self.merkleroot_flipped(self.coinbase)
+        if ntime is None:
+            header += self.ntime_be
+        else:
+            if isinstance(ntime, basestring):
+		self.ntime = ntime
+                header += unhexlify(ntime)
+            else:
+                raise AttributeError("ntime must be hex string")
+        header += self.bits_be
+        header += unhexlify(nonce)
+	return {'nonce':    hexlify(nonce),
+		'version':  self.version,
+		'merklert': self.merkleroot_flipped(self.coinbase),
+		'coinbase': self.coinbase.to_dict(),
+		'ntime':    self.ntime,
+		'bits':     hexlify(self.bits)}
+
     def block_header(self, nonce, extra1, extra2, ntime=None, pos=False):
         """ Builds a block header given nonces and extranonces. Assumes extra1
         and extra2 are bytes of the proper length from when the coinbase
@@ -275,8 +301,6 @@ class BlockTemplate(BitcoinEncoding):
                 raise AttributeError("ntime must be hex string")
         header += self.bits_be
         header += unhexlify(nonce)
-	if self.pos or pos:
-	   header += ser_string(self.signature)
         return b''.join([header[i*4:i*4+4][::-1] for i in range(0, 20)])
 
     def stratum_params(self):
@@ -320,4 +344,6 @@ class BlockTemplate(BitcoinEncoding):
         if self.masternode_payments:
             block += ser_vector(self.vmn)
 
+	if self.pos:
+	    block += ser_string(self.signature)
         return block
