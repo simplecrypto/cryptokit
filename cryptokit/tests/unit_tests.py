@@ -12,6 +12,7 @@ from cryptokit import (target_unpack, target_from_diff, Hash, uint256_from_str,
 from binascii import unhexlify, hexlify
 from pprint import pprint
 from struct import pack
+from hashlib import sha256
 
 
 class TestHashTuple(unittest.TestCase):
@@ -197,22 +198,27 @@ class TestMerkleRoot(unittest.TestCase):
 class TestBlockTemplate(unittest.TestCase):
     def test_block_header2(self):
         # pulled from litecoin blockchain and modded slightly with full block header
-        block_data = {
-            'bits': '1d018ea7',
-            'hash': 'adf6e2e56df692822f5e064a8b6404a05d67cccd64bc90f57f65b46805e9a54b',
-            'height': 29255,
-            'merkleroot': '066b2a758399d5f19b5c6073d09b500d925982adc4b3edd352efe14667a8ca9f',
-            'nonce': hexlify(pack(str(">L"), 3562614017)),
-            'previousblockhash': '279f6330ccbbb9103b9e3a5350765052081ddbae898f1ef6b8c64f3bcef715f6',
-            'curtime': 1320884152,
-            'raw_header': '01000000f615f7ce3b4fc6b8f61e8f89aedb1d0852507650533a9e3b10b9bbcc30639f279fcaa86746e1ef52d3edb3c4ad8259920d509bd073605c9bf1d59983752a6b06b817bb4ea78e011d012d59d4',
-            'tx': [
-                ('066b2a758399d5f19b5c6073d09b500d925982adc4b3edd352efe14667a8ca9f', '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0804b217bb4e022309ffffffff0100f2052a010000004341044870341873accab7600d65e204bb4ae47c43d20c562ebfbf70cbcb188da98dec8b5ccf0526c8e4d954c6b47b898cc30adf1ff77c2e518ddc9785b87ccb90b8cdac00000000')],
-            'version': 1}
+	block_data = {
+	    "hash" : "0000051b2ce4cc300257d68a10f96d30f5e01088a64c837f803e871e5abc8d9a",
+	    "height" : 2,
+	    "version" : 1,
+	    "merkleroot" : "a37b1d53207b8dc4d94bc6e3171247043743ad7459b09bc0f6127e5d29c13d81",
+	    "coinbasevalue" : 6000000,
+	    "curtime" : 1420477153,
+	    "nonce" : hexlify(pack(str(">L"), 3087073600)),
+	    "bits" : "1e0fffff",
+	    "previousblockhash" : "00000b24e3b3f52901eaa73da7cd29ce310e46f1f11f0c54a23babd5fe545476",
+	    "flags" : "proof-of-work stake-modifier",
+	    "proofhash" : "0000051b2ce4cc300257d68a10f96d30f5e01088a64c837f803e871e5abc8d9a",
+	    "tx" : [
+	        ("a37b1d53207b8dc4d94bc6e3171247043743ad7459b09bc0f6127e5d29c13d81", "01000000e1c2aa54010000000000000000000000000000000000000000000000000000000000000000ffffffff03520104ffffffff010080dd62b22102001976a914a3ada1c4a249ab14d63e4d881c5ae36ed0f7025088ac00000000"),
+
+	    ]
+	}
         # make a list of objects
         # confirm that the objects hash correctly
         coinbase = None
-        transactions = [Transaction(unhexlify(data.encode('ascii')), disassemble=True)
+        transactions = [Transaction(unhexlify(data.encode('ascii')), disassemble=True, pos=True)
                         for _, data in block_data['tx']]
         self.assertEquals(hexlify(merkleroot(transactions, be=True)[0]), block_data['merkleroot'])
         for obj, hsh in zip(transactions, block_data['tx']):
@@ -226,20 +232,21 @@ class TestBlockTemplate(unittest.TestCase):
                       .format(idx, coinbase.outputs[0].amount))
 
         pprint(coinbase.to_dict())
-        tmplt = BlockTemplate.from_gbt(block_data, coinbase, transactions=transactions)
+        tmplt = BlockTemplate.from_gbt(block_data, coinbase, transactions=transactions, pos=True)
         self.assertEquals(hexlify(tmplt.merkleroot_be(coinbase)),
                           block_data['merkleroot'])
-        header = tmplt.block_header(block_data['nonce'], b'', b'')
-        self.assertEquals(block_data['raw_header'], hexlify(header))
-
+        header = tmplt.block_header(block_data['nonce'], b'', b'', pos=True)	
         target = target_unpack(unhexlify(block_data['bits']))
-        assert self.hash("scrypt", header) < target
+	hash = self.hash("sha256", header)
+	print("Hash: {0}, Target: {1}".format(hash, target))
+        assert hash < target
 
     def hash(self, algo, dat):
         if algo == "scrypt":
             from ltc_scrypt import getPoWHash
-
-        hsh = getPoWHash(dat)
+            hsh = getPoWHash(dat)
+	elif algo == "sha256":
+	    hsh = sha256(sha256(dat).digest()).digest()
         return uint256_from_str(hsh)
 
     def test_block_header(self):
@@ -262,6 +269,7 @@ class TestBlockTemplate(unittest.TestCase):
                 ('47bce257235ab0f6c8526a12fc23e3bec10bbd1d87a3a261f624ff5c0d2730f2', '0100000001a16eaa30e2d56f3a3a94bf4b640c2ffaa3ccd09ce3926567b2e63e3f4d55df26000000006b48304502203579c6afe9b7365252c0424aa5e3b9d00c850f2beee0c0b2f66ac7652c4eb002022100ca44a4a0e7d2ff81de117efd144a89c70acc87eaf2e3454fed175f0ef9b6f562012103f5f17ee5b476803cf332d56c293ce59aa77a5046a284c9f7a523fefd911e9980ffffffff0260119d0a010000001976a9149e027ca13765f6558fcbab6acec2fc561fc5dd3288ac9ec1764b010000001976a914957acdecb251260da54dc8510497cb761db0698c88ac00000000'),
                 ('6b74e1534ee50fc7158593831e322717fa536d65cbeb03fe53b30b31853fa033', '010000000153323c2dbba06bc58227354b013d31ba01ba814fa5681fb211c039979cac1643000000006b483045022054f7930a06af7da2a3e35c3fbb9bb0fbf5897c9296286de46d96763ea8c1d8fc0221009b8d53d5964a57fc8469ece1b0ef6f43e2cdbe1d4d72308d04491cb4705f95ce012103bbd11e6843ebcbcd2024265332738d8e1ebc7d0bb4b3a2e5b7a8bd6ece14bcb7ffffffff029feec0e4000000001976a91481d7f7a63b4a4e236b3b5d43067212e52bcd25ae88acf73d7520000000001976a91447cd32e2669d30d86d1c6708b890b9d7c7b632f188ac00000000')],
             'version': 1}
+
         # make a list of objects
         # confirm that the objects hash correctly
         coinbase = None
@@ -285,8 +293,6 @@ class TestBlockTemplate(unittest.TestCase):
         header = tmplt.block_header(block_data['nonce'], b'', b'')
         target = bitcoin_data.FloatingInteger.from_hex(block_data['bits']).target
         hash_int = self.hash("scrypt", header)
-        print hash_int
-        print target
         self.assertLessEqual(hash_int, target)
 
     def test_stratum_confirm(self):
@@ -379,3 +385,6 @@ class TransactionTests(unittest.TestCase):
 
         test = Transaction(one + unhexlify('0abcdef01012') + two)
         test.disassemble()
+
+if __name__ == "__main__":
+   unittest.main()
