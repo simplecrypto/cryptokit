@@ -11,7 +11,7 @@ import json
 from . import (BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str,
                sha256d)
 from .transaction import Transaction
-from .dark import CMasterNodeVote, ser_vector
+from .dark import CMasterNodeVote, ser_vector, deser_string, ser_string
 
 
 def pairwise(iterator):
@@ -90,7 +90,7 @@ def from_merklebranch(branch_list, coinbase, be=False):
 class BlockTemplate(BitcoinEncoding):
     """ An object for encapsulating common block header/template type actions.
     """
-    def __init__(self, raw=None):
+    def __init__(self, raw=None, pos=False):
         # little endian bytes
         self.hashprev = None
         # ints
@@ -113,9 +113,11 @@ class BlockTemplate(BitcoinEncoding):
         # Darkcoin Masternode Voting
         self.vmn = []
         self.masternode_payments = False
+	self.pos = pos
+	self.signature = b""
 
     @classmethod
-    def from_gbt(cls, retval, coinbase, extra_length=0, transactions=None):
+    def from_gbt(cls, retval, coinbase, extra_length=0, transactions=None, pos=False):
         """ Creates a block template object from a get block template call
         and a coinbase transaction object. extra_length needs to be the length
         of padding that was added for extranonces (both 1 and 2 if added).
@@ -124,7 +126,7 @@ class BlockTemplate(BitcoinEncoding):
         if transactions is None:
             transactions = []
         coinbase1, coinbase2 = coinbase.assemble(split=True)
-        inst = cls()
+        inst = cls(pos)
         inst.hashprev = unhexlify(reverse_hash(retval['previousblockhash']))
         inst.ntime = retval['curtime']
         inst.bits = unhexlify(retval['bits'])
@@ -243,7 +245,34 @@ class BlockTemplate(BitcoinEncoding):
     def fee_total(self):
         return sum([t.fees or 0 for t in self.transactions])
 
-    def block_header(self, nonce, extra1, extra2, ntime=None):
+    def raw_block(self, nonce, extra1, extra2, ntime=None, pos=False):
+        # calculate the merkle root by assembling the coinbase transaction
+
+        coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
+        coinbase_raw += self.coinbase2
+        self.coinbase = Transaction(coinbase_raw)
+
+        header = self.version_be
+        header += self.hashprev_le
+        header += self.merkleroot_flipped(self.coinbase)
+        if ntime is None:
+            header += self.ntime_be
+        else:
+            if isinstance(ntime, basestring):
+		self.ntime = ntime
+                header += unhexlify(ntime)
+            else:
+                raise AttributeError("ntime must be hex string")
+        header += self.bits_be
+        header += unhexlify(nonce)
+	return {'nonce':    hexlify(nonce),
+		'version':  self.version,
+		'merklert': self.merkleroot_flipped(self.coinbase),
+		'coinbase': self.coinbase.to_dict(),
+		'ntime':    self.ntime,
+		'bits':     hexlify(self.bits)}
+
+    def block_header(self, nonce, extra1, extra2, ntime=None, pos=False):
         """ Builds a block header given nonces and extranonces. Assumes extra1
         and extra2 are bytes of the proper length from when the coinbase
         fragments were originally generated (either manually, or using
@@ -259,7 +288,6 @@ class BlockTemplate(BitcoinEncoding):
         coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
         coinbase_raw += self.coinbase2
         self.coinbase = Transaction(coinbase_raw)
-        #coinbase.disassemble() for testing to ensure proper coinbase constr
 
         header = self.version_be
         header += self.hashprev_le
@@ -316,4 +344,6 @@ class BlockTemplate(BitcoinEncoding):
         if self.masternode_payments:
             block += ser_vector(self.vmn)
 
+	if self.pos:
+	    block += ser_string(self.signature)
         return block
