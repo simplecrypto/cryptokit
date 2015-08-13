@@ -8,7 +8,7 @@ import json
 
 from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
 from .transaction import Transaction
-from .dark import CMasterNodeVote, ser_vector
+from .dark import CMasterNodeVote, ser_vector, ser_string
 
 
 def pairwise(iterator):
@@ -88,7 +88,7 @@ def from_merklebranch(branch_list, coinbase, be=False):
 class BlockTemplate(BitcoinEncoding):
     """ An object for encapsulating common block header/template type actions.
     """
-    def __init__(self, raw=None):
+    def __init__(self, raw=None, pos=False):
         # little endian bytes
         self.hashprev = None
         # ints
@@ -112,8 +112,11 @@ class BlockTemplate(BitcoinEncoding):
         self.vmn = []
         self.masternode_payments = False
 
+        # A signature for pos. If populated, will be appended to block
+        self.pos_signature = b"" if pos else None
+
     @classmethod
-    def from_gbt(cls, retval, coinbase, extra_length=0, transactions=None):
+    def from_gbt(cls, retval, coinbase, extra_length=0, transactions=None, pos=False):
         """ Creates a block template object from a get block template call
         and a coinbase transaction object. extra_length needs to be the length
         of padding that was added for extranonces (both 1 and 2 if added).
@@ -122,7 +125,7 @@ class BlockTemplate(BitcoinEncoding):
         if transactions is None:
             transactions = []
         coinbase1, coinbase2 = coinbase.assemble(split=True)
-        inst = cls()
+        inst = cls(pos=pos)
         inst.hashprev = unhexlify(reverse_hash(retval['previousblockhash']))
         inst.ntime = retval['curtime']
         inst.bits = unhexlify(retval['bits'])
@@ -256,7 +259,7 @@ class BlockTemplate(BitcoinEncoding):
 
         coinbase_raw = self.coinbase1 + unhexlify(extra1) + unhexlify(extra2)
         coinbase_raw += self.coinbase2
-        self.coinbase = Transaction(coinbase_raw)
+        self.coinbase = Transaction(raw=coinbase_raw)
         #coinbase.disassemble() for testing to ensure proper coinbase constr
 
         header = self.version_be
@@ -313,5 +316,9 @@ class BlockTemplate(BitcoinEncoding):
         # Darkcoin
         if self.masternode_payments:
             block += ser_vector(self.vmn)
+
+        # Proof of stake
+        if self.pos_signature is not None:
+            block += ser_string(self.pos_signature)
 
         return block

@@ -9,6 +9,7 @@ from binascii import hexlify
 
 from . import BitcoinEncoding
 from .base58 import address_bytes
+from .dark import ser_string
 from .bitcoin.script import create_push_script
 
 
@@ -43,7 +44,7 @@ class Transaction(BitcoinEncoding):
     raw format at https://en.bitcoin.it/wiki/Transactions. """
     _nullprev = b'\0' * 32
 
-    def __init__(self, raw=None, fees=None, disassemble=False):
+    def __init__(self, raw=None, fees=None, disassemble=False, pos=False, messages=False):
         # raw transaction data in byte format
         if raw:
             if not isinstance(raw, (bytearray, newbytes.newbytes)):
@@ -55,11 +56,18 @@ class Transaction(BitcoinEncoding):
         self.inputs = []
         self.outputs = []
         self.locktime = 0
+
+        if pos:
+            self.n_time = 0
+        else:
+            self.n_time = None
+
         # integer value, not encoded in the pack but for utility
         self.fees = fees
-        self.version = 1
+        self.version = None
         # stored as le bytes
         self._hash = None
+        self.transaction_message = b"" if messages else None
         if disassemble:
             self.disassemble()
 
@@ -135,7 +143,17 @@ class Transaction(BitcoinEncoding):
         transaction. split=True will return two halves of the transaction ,
         first chunck will be up until then end of the sigscript, second chunk
         is the remainder. For changing extronance, split off the sigscript """
+
+        # Set a default version before assembling
+        if self.version is None:
+            if self.transaction_message is not None:
+                self.version = 2
+            else:
+                self.version = 1
+
         data = pack(str('<L'), self.version)
+        if self.n_time is not None:
+            data += pack(str("<i"), self.n_time)
         split_point = None
 
         data += self.varlen_encode(len(self.inputs))
@@ -154,6 +172,9 @@ class Transaction(BitcoinEncoding):
             data += script_pub_key
 
         data += pack(str('<L'), self.locktime)
+
+        if self.transaction_message is not None:
+            data += ser_string(self.transaction_message)
 
         self._raw = data
         # reset hash to be recacluated on next grab
