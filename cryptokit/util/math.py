@@ -3,7 +3,6 @@
 # of the GNU Public License, verison 3.
 from __future__ import absolute_import, division
 
-import __builtin__
 import math
 import random
 import time
@@ -40,7 +39,8 @@ def shift_left(n, m):
         return n << m
     return n >> -m
 
-def clip(x, (low, high)):
+def clip(x, low_high):
+    low, high = low_high
     if x < low:
         return low
     elif x > high:
@@ -48,7 +48,9 @@ def clip(x, (low, high)):
     else:
         return x
 
-add_to_range = lambda x, (low, high): (min(low, x), max(high, x))
+def add_to_range(x, low_high):
+    low, high = low_high
+    return min(low, x), max(high, x)
 
 def nth(i, n=0):
     i = iter(i)
@@ -155,10 +157,7 @@ def format_binomial_conf(x, n, conf=0.95, f=lambda x: x):
     return '~%.1f%% (%.f-%.f%%)' % (100*f(x/n), math.floor(100*left), math.ceil(100*right))
 
 def reversed(x):
-    try:
-        return __builtin__.reversed(x)
-    except TypeError:
-        return reversed(list(x))
+    return list(reversed(list(x)))
 
 class Object(object):
     def __init__(self, **kwargs):

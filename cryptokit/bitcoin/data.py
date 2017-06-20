@@ -205,10 +205,14 @@ def calculate_merkle_link(hashes, index):
 def check_merkle_link(tip_hash, link):
     if link['index'] >= 2**len(link['branch']):
         raise ValueError('index too large')
-    return reduce(lambda c, (i, h): hash256(merkle_record_type.pack(
-        dict(left=h, right=c) if (link['index'] >> i) & 1 else
-        dict(left=c, right=h)
-    )), enumerate(link['branch']), tip_hash)
+    def red(c, i_h):
+        i, h = i_h
+        hsh = hash256(merkle_record_type.pack(
+            dict(left=h, right=c) if (link['index'] >> i) & 1 else
+            dict(left=c, right=h)
+            ))
+        return hsh, enumerate(link['branch']), tip_hash
+    return reduce(red)
 
 # targets
 

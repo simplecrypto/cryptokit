@@ -1,14 +1,22 @@
 from hashlib import sha256
-from itertools import tee, islice, izip_longest
+from itertools import tee, islice
 from binascii import unhexlify, hexlify
 from struct import pack
 
-import StringIO
 import json
 
 from . import BitcoinEncoding, target_unpack, reverse_hash, uint256_from_str
 from .transaction import Transaction
 from .dark import CMasterNodeVote, ser_vector, ser_string
+
+import sys
+if sys.version_info > (3,):
+    long = int
+    from io import BytesIO as StringIO
+    from itertools import zip_longest
+else:
+    import StringIO
+    from itertools import izip_longest as zip_longest
 
 
 def pairwise(iterator):
@@ -16,7 +24,7 @@ def pairwise(iterator):
     list is odd and the second iterator runs out None will be returned for
     second arg """
     a, b = tee(iterator)
-    return izip_longest(islice(a, 0, None, 2), islice(b, 1, None, 2))
+    return zip_longest(islice(a, 0, None, 2), islice(b, 1, None, 2))
 
 
 def merkleroot(iterator, be=False, hashes=False):
@@ -236,7 +244,7 @@ class BlockTemplate(BitcoinEncoding):
         r = uint256_from_str(self.merkleroot_be(coinbase))
         rs = b""
         for i in xrange(8):
-            rs += pack(str(">I"), r & 0xFFFFFFFFL)
+            rs += pack(str(">I"), r & long(0xFFFFFFFF))
             r >>= 32
         return rs[::-1]
 

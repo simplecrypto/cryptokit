@@ -4,6 +4,10 @@ from struct import pack, unpack
 from collections import namedtuple
 from binascii import unhexlify, hexlify
 
+import sys
+if sys.version_info > (3,):
+    long = int
+
 
 def sha256d(data):
     hsh = sha256(sha256(data).digest()).digest()
@@ -115,7 +119,7 @@ class BitcoinEncoding(object):
 
 
 def uint256_from_str(s):
-    r = 0L
+    r = long(0)
     t = unpack(str("<IIIIIIII"), s[:32])
     for i in xrange(8):
         r += t[i] << (i * 32)

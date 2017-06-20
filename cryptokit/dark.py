@@ -2,6 +2,10 @@ import struct
 import binascii
 from struct import pack
 
+import sys
+if sys.version_info > (3,):
+    long = int
+
 
 def ser_vector(l):
     r = ""
@@ -9,7 +13,7 @@ def ser_vector(l):
         r = chr(len(l))
     elif len(l) < 0x10000:
         r = chr(253) + pack("<H", len(l))
-    elif len(l) < 0x100000000L:
+    elif len(l) < long(0x100000000):
         r = chr(254) + pack("<I", len(l))
     else:
         r = chr(255) + pack("<Q", len(l))
@@ -34,7 +38,7 @@ def ser_string(s):
         return chr(len(s)) + s
     elif len(s) < 0x10000:
         return chr(253) + struct.pack("<H", len(s)) + s
-    elif len(s) < 0x100000000L:
+    elif len(s) < long(0x100000000):
         return chr(254) + struct.pack("<I", len(s)) + s
     return chr(255) + struct.pack("<Q", len(s)) + s
 
@@ -59,7 +63,7 @@ class CMasterNodeVote(object):
         r += struct.pack("<q", self.blockHeight)
         r += ser_string(self.scriptPubKey)
         r += struct.pack("<i", self.votes)
-        print "mnv", self.scriptPubKey, ser_string(self.scriptPubKey)
+        print("mnv", self.scriptPubKey, ser_string(self.scriptPubKey))
         return r
 
     def __repr__(self):

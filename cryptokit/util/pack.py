@@ -12,13 +12,15 @@ class EarlyEnd(Exception):
 class LateEnd(Exception):
     pass
 
-def read((data, pos), length):
+def read(data_pos, length):
+    data, pos = data_pos
     data2 = data[pos:pos + length]
     if len(data2) != length:
         raise EarlyEnd()
     return data2, (data, pos + length)
 
-def size((data, pos)):
+def size(data_pos):
+    data, pos = data_pos
     return len(data) - pos
 
 class Type(object):
@@ -30,7 +32,7 @@ class Type(object):
             try:
                 rval = self._hash = hash((type(self), frozenset(self.__dict__.items())))
             except:
-                print self.__dict__
+                print(self.__dict__)
                 raise
         return rval
 
@@ -193,8 +195,6 @@ class IntType(Type):
         assert endianness in ['little', 'big']
         if bits in [8, 16, 32, 64]:
             return StructType(('<' if endianness == 'little' else '>') + {8: 'B', 16: 'H', 32: 'I', 64: 'Q'}[bits])
-        else:
-            return Type.__new__(cls, bits, endianness)
 
     def __init__(self, bits, endianness='little'):
         assert bits % 8 == 0

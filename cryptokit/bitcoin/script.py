@@ -3,6 +3,10 @@
 # of the GNU Public License, verison 3.
 from cryptokit.util import math, pack
 
+import sys
+if sys.version_info > (3,):
+    xrange = range
+
 def reads_nothing(f):
     return None, f
 def protoPUSH(length):
