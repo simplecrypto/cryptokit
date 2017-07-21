@@ -16,4 +16,9 @@ setup(name='cryptokit',
           "vtc": ["vtc_scrypt"],
           "drk": ["drk_hash"]
       },
+      entry_points={
+          'console_scripts': [
+              'cryptokit = cryptokit.cmd:main'
+          ]
+      },
       packages=find_packages())
