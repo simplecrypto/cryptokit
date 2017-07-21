@@ -126,6 +126,13 @@ def uint256_from_str(s):
     return r
 
 
+def uint256_to_str(u):
+    r = b""
+    for i in range(8):
+        r += pack(str('<I'), u >> (i * 32) & 0xffffffff)
+    return r
+
+
 def reverse_hash(h):
     # This only revert byte order, nothing more
     if len(h) != 64:
