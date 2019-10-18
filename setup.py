@@ -9,7 +9,7 @@ setup(name='cryptokit',
       author='Isaac Cook',
       author_email='isaac@simpload.com',
       url='http://www.python.org/sigs/distutils-sig/',
-      install_requires=['future==0.11.2', 'urllib3==1.9'],
+      install_requires=['future==0.11.2', 'urllib3==1.24.2'],
       extras_require={
           "quark": ["quark_hash"],
           "ltc": ["ltc_scrypt"],
